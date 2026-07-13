@@ -1,0 +1,8 @@
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+::selection {
+  background: rgba(139, 156, 249, 0.32);
+}

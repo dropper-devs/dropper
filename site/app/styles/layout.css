@@ -1,0 +1,59 @@
+/* --------------------------------- layout -------------------------------- */
+
+.container {
+  width: min(1100px, calc(100% - 48px));
+  margin: 0 auto;
+}
+
+section {
+  padding: 96px 0;
+  position: relative;
+}
+
+.section-kicker {
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin: 0 0 12px;
+}
+
+.section-title {
+  font-size: clamp(28px, 4.5vw, 42px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin: 0 0 16px;
+}
+
+.section-lede {
+  color: var(--text-dim);
+  font-size: 18px;
+  max-width: 620px;
+  margin: 0 0 48px;
+}
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  gap: 64px;
+  align-items: center;
+}
+
+.split.flip > :first-child {
+  order: 2;
+}
+
+@media (max-width: 1179px) {
+  .split,
+  .split.flip {
+    /* minmax(0,…): a bare 1fr honors min-content width, letting wide
+       children (the browser mockup) push the column past the viewport */
+    grid-template-columns: minmax(0, 1fr);
+    gap: 40px;
+  }
+  .split.flip > :first-child {
+    order: 0;
+  }
+}

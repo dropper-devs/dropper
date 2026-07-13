@@ -1,0 +1,357 @@
+/* ------------------------------- conversion ------------------------------ */
+
+.convert-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+
+@media (max-width: 1179px) {
+  .convert-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.convert-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 22px 16px;
+  font: 600 15px var(--mono);
+}
+
+.convert-chip .from {
+  color: var(--text-dim);
+}
+
+.convert-chip .arrow {
+  color: var(--accent);
+}
+
+.convert-chip .to {
+  color: var(--text);
+}
+
+/* ------------------------------ feature grid ----------------------------- */
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  align-items: stretch;
+  position: relative;
+  z-index: 0;
+}
+
+/* soft aurora behind the glass — gives the lens something to refract */
+.feature-grid::before {
+  content: "";
+  position: absolute;
+  inset: -70px -80px;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(32% 42% at 16% 28%, rgba(139, 156, 249, 0.34), transparent 62%),
+    radial-gradient(26% 38% at 52% 82%, rgba(236, 156, 141, 0.2), transparent 65%),
+    radial-gradient(30% 44% at 86% 20%, rgba(104, 202, 255, 0.22), transparent 62%),
+    radial-gradient(22% 30% at 72% 60%, rgba(178, 132, 255, 0.18), transparent 65%);
+  filter: blur(26px);
+}
+
+/* Reveal wrappers are the grid items — stretch them so every card in a
+   row shares the same height */
+.feature-grid > .reveal {
+  height: 100%;
+}
+
+@media (max-width: 1179px) {
+  .feature-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Liquid glass. Three layers: a nearly-clear tint pane whose backdrop is
+   bent through the #liquid-glass lens map (hard refraction at the bevel,
+   clear center), a curved specular highlight, and inset lighting that
+   gives the pane physical volume. Browsers that can't run url() backdrop
+   filters keep the tint, aurora and lighting. */
+.feature-card,
+.liquid-pane {
+  position: relative;
+  z-index: 0;
+  overflow: hidden;
+  padding: 26px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow:
+    0 18px 44px rgba(2, 6, 20, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.22),
+    inset 0 0 22px rgba(255, 255, 255, 0.045);
+  /* no transform transitions on glass: moving a refracting pane re-renders
+     the displacement filter every frame (CPU) and crawls */
+  transition: box-shadow 0.25s, border-color 0.25s;
+}
+
+/* the pane: barely-there tint, strong lens */
+.feature-card::before,
+.liquid-pane::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.1),
+    rgba(255, 255, 255, 0.02) 50%,
+    rgba(255, 255, 255, 0.055)
+  );
+  backdrop-filter: url(#liquid-glass) blur(3px) saturate(1.9) brightness(1.16);
+}
+
+/* curved specular highlight along the top, like light on a meniscus */
+.feature-card::after,
+.liquid-pane::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    92% 46% at 50% -10%,
+    rgba(255, 255, 255, 0.17),
+    rgba(255, 255, 255, 0.05) 45%,
+    transparent 62%
+  );
+}
+
+/* hover: lighting only, never movement — the pane must not animate */
+.feature-card:hover {
+  border-color: rgba(255, 255, 255, 0.32);
+  box-shadow:
+    0 22px 50px rgba(2, 6, 20, 0.48),
+    inset 0 1px 0 rgba(255, 255, 255, 0.42),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.22),
+    inset 0 0 26px rgba(255, 255, 255, 0.06);
+}
+
+.feature-card .icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: rgba(139, 156, 249, 0.14);
+  color: var(--accent);
+  margin-bottom: 16px;
+}
+
+.feature-card .icon svg {
+  width: 19px;
+  height: 19px;
+}
+
+.feature-card h3 {
+  font-size: 16px;
+  margin: 0 0 8px;
+}
+
+.feature-card p {
+  color: var(--text-dim);
+  font-size: 14px;
+  margin: 0;
+}
+
+/* ------------------------------ checklist -------------------------------- */
+
+.checklist {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.checklist li {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  color: var(--text-dim);
+  font-size: 15px;
+}
+
+.checklist li strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.checklist .tick {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  flex: none;
+  margin-top: 2px;
+  display: grid;
+  place-items: center;
+  background: rgba(139, 156, 249, 0.16);
+  color: var(--accent);
+}
+
+.checklist .tick svg {
+  width: 11px;
+  height: 11px;
+}
+
+/* ------------------------------- ownership ------------------------------- */
+
+.own-link-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-elev);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  padding: 12px 20px;
+  font: 13px var(--mono);
+  color: var(--text-dim);
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.own-link-pill .domain {
+  color: var(--accent-bright);
+}
+
+.own-link-pill .slug {
+  color: var(--text);
+}
+
+/* ------------------------------- subscribe ------------------------------- */
+
+.subscribe-box {
+  padding: 52px 44px;
+  text-align: center;
+  /* height:100%/flex column come from .liquid-pane; recenter the content */
+  display: block;
+  height: auto;
+}
+
+/* the aurora the Get Dropper pane refracts */
+.subscribe-aurora {
+  position: relative;
+  z-index: 0;
+}
+
+.subscribe-aurora::before {
+  content: "";
+  position: absolute;
+  inset: -60px -90px;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(30% 55% at 22% 30%, rgba(139, 156, 249, 0.32), transparent 62%),
+    radial-gradient(26% 48% at 78% 68%, rgba(178, 132, 255, 0.22), transparent 64%),
+    radial-gradient(24% 40% at 55% 10%, rgba(104, 202, 255, 0.18), transparent 62%);
+  filter: blur(28px);
+}
+
+.subscribe-form {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 26px;
+}
+
+.subscribe-form input[type="email"] {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--hairline-strong);
+  border-radius: 999px;
+  color: var(--text);
+  font: 15px var(--font);
+  padding: 13px 22px;
+  width: min(340px, 100%);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.subscribe-form input[type="email"]:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(139, 156, 249, 0.18);
+}
+
+.subscribe-form input[type="email"]::placeholder {
+  color: var(--text-faint);
+}
+
+.form-status {
+  min-height: 22px;
+  margin-top: 14px;
+  font-size: 14px;
+}
+
+.form-status.ok {
+  color: #7ddb96;
+}
+
+.form-status.err {
+  color: #f38d8d;
+}
+
+/* honeypot: visually gone, still in the DOM for bots */
+.hp-field {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+/* --------------------------------- footer -------------------------------- */
+
+footer {
+  border-top: 1px solid var(--hairline);
+  padding: 40px 0 56px;
+  color: var(--text-faint);
+  font-size: 13.5px;
+}
+
+.footer-inner {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.footer-inner .spacer {
+  flex: 1;
+}
+
+footer a {
+  color: var(--text-dim);
+}
+
+footer a:hover {
+  color: var(--text);
+}
+
+/* the real markup-editor screenshot: a notch smaller than full width */
+#screenshots .product-shot > img {
+  max-width: 920px;
+  display: block;
+  margin-inline: auto;
+}
+
+/* auroras must not widen the page on small screens */
+@media (max-width: 720px) {
+  .feature-grid::before,
+  .subscribe-aurora::before {
+    inset: -30px 0;
+  }
+}

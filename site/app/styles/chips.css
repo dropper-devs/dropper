@@ -1,0 +1,270 @@
+/* --------------------------- hero demo chips ----------------------------- */
+
+.hero-demo {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  width: min(440px, 100%);
+  justify-self: end;
+  /* the demo is an interactive toy — text selection just gets in the way */
+  user-select: none;
+}
+
+@media (min-width: 1180px) {
+  .hero-grid {
+    width: 1100px;
+    min-width: 1100px;
+    grid-template-columns: 600px 440px;
+    gap: 60px;
+  }
+
+  .hero-grid > :first-child {
+    transform: translateY(80px);
+  }
+
+  .hero-demo {
+    transform: none;
+  }
+}
+
+.chip-row {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 20px;
+}
+
+.chip {
+  display: grid;
+  gap: 5px;
+  justify-items: center;
+  padding: 14px 18px 11px;
+  min-width: 86px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1.5px dashed var(--hairline-strong);
+  border-radius: 12px;
+  color: var(--text-dim);
+  font: inherit;
+  cursor: grab;
+  transition: border-color 0.15s, color 0.15s, transform 0.3s, opacity 0.3s,
+    background 0.15s;
+  touch-action: manipulation;
+  /* --float-y: scroll-spring offset (JS); translate first so the drift is
+     screen-vertical regardless of the chip's tilt */
+  transform: translateY(var(--float-y, 0px)) rotate(var(--rot, 0deg));
+}
+
+.chip:hover,
+.chip:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent-bright);
+  background: rgba(139, 156, 249, 0.06);
+}
+
+.chip:active {
+  cursor: grabbing;
+}
+
+/* --------- floating chip arc + curved arrows (desktop treatment) --------- */
+
+/* Covers the whole hero grid; chips sit in the negative space above/around
+   the headline and the gap before the mock. Hidden below 1180px, where the
+   plain chip row (inside .hero-demo) takes over. */
+.chip-arc {
+  /* ------- whole-composition knobs (chips + arrow move as one) -------
+     --arc-x       + right / − left        (px)
+     --arc-y       + down  / − up          (px)
+     --arc-rotate  + clockwise / − counter (deg), pivots around --arc-origin
+     --arc-scale   1 = current size
+     --arc-origin  the pivot point, e.g. "50% 50%" center, "0% 100%"
+                   bottom-left, "72% 80%" roughly the arrowhead */
+  --arc-x: -120px;
+  --arc-y: -120px;
+  --arc-rotate: -15deg;
+  --arc-scale: 1;
+  --arc-origin: 50% 50%;
+
+  display: none;
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 1100px;
+  height: 637px;
+  z-index: 2;
+  transform: translate(var(--arc-x), var(--arc-y)) rotate(var(--arc-rotate))
+    scale(var(--arc-scale));
+  transform-origin: var(--arc-origin);
+  pointer-events: none; /* only the chips themselves are interactive */
+}
+
+/* hover: the card lights up — lighter body, accent edge, soft halo.
+   (Needs its own rule: the generic .chip:hover ties with .chip-arc .chip
+   on specificity and loses on order, so it never applied here.) */
+.chip-arc .chip:hover,
+.chip-arc .chip:focus-visible {
+  background: #202a4d;
+  border-color: rgba(165, 179, 251, 0.9);
+  color: var(--accent-bright);
+  box-shadow:
+    0 18px 38px rgba(0, 3, 14, 0.28),
+    0 0 24px rgba(139, 156, 249, 0.3);
+}
+
+.chip-arc .chip {
+  position: absolute;
+  z-index: 1;
+  width: 74px;
+  height: 89px;
+  min-width: 74px;
+  padding: 16px 9px 12px;
+  align-content: space-between;
+  pointer-events: auto;
+  background: #11182a;
+  border-color: rgba(184, 194, 221, 0.48);
+  border-radius: 9px;
+  box-shadow: 0 18px 38px rgba(0, 3, 14, 0.28);
+}
+
+.chip-arc-arrow {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.chip-arc-arrow-line,
+.chip-arc-arrow-head {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.chip-arc-arrow-line {
+  stroke-dasharray: 10 7;
+}
+
+@media (min-width: 1180px) {
+  .chip-arc {
+    display: block;
+  }
+  /* the fallback row disappears; the arc IS the chip UI on desktop */
+  .hero-demo .chip-row {
+    display: none;
+  }
+}
+
+/* periodic "you can drag me" nudge — a quick, small shake that rides on
+   top of the chip's resting tilt */
+@keyframes chipWiggle {
+  0%, 100% { transform: translateY(var(--float-y, 0px)) rotate(var(--rot, 0deg)); }
+  20% { transform: translateY(calc(var(--float-y, 0px) - 3px)) rotate(calc(var(--rot, 0deg) + 4deg)); }
+  45% { transform: translateY(calc(var(--float-y, 0px) - 1px)) rotate(calc(var(--rot, 0deg) - 3.5deg)); }
+  70% { transform: translateY(var(--float-y, 0px)) rotate(calc(var(--rot, 0deg) + 2deg)); }
+}
+
+.chip.wiggle {
+  animation: chipWiggle 0.7s ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chip {
+    transition: none;
+  }
+}
+
+.chip-icon {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+}
+
+.chip-arc .chip-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.chip-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.chip-kind {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.chip-arc .chip-kind {
+  font-size: 9px;
+  letter-spacing: 0.15em;
+}
+
+.chip-size {
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+.chip-arc .chip-size {
+  font-size: 8.5px;
+}
+
+.chip-hint {
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 12.5px;
+  margin: 12px 0 0;
+}
+
+.mock-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.mock-split .zone {
+  border: 1.5px dashed var(--hairline-strong);
+  border-radius: var(--radius-sm);
+  padding: 16px 10px;
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  text-align: center;
+}
+
+.mock-split .zone.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(139, 156, 249, 0.06);
+}
+
+.mock-split .zone svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* touch dragging: the chip follows the finger (Pointer Events; HTML5
+   drag-and-drop does not exist on touch). touch-action:none lets the
+   drag own the gesture instead of scrolling. */
+@media (pointer: coarse) {
+  .chip {
+    touch-action: none;
+  }
+}
+
+.chip {
+  position: relative;
+}
+
+.chip.touch-dragging {
+  z-index: 60;
+  opacity: 0.92;
+  box-shadow: 0 18px 40px rgba(0, 3, 14, 0.45);
+}

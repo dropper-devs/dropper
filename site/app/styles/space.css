@@ -1,0 +1,103 @@
+.site-parallax {
+  --slow-x: 0px;
+  --slow-y: 0px;
+  --slow-r: 0deg;
+  --mid-x: 0px;
+  --mid-y: 0px;
+  --mid-r: 0deg;
+  --fast-x: 0px;
+  --fast-y: 0px;
+  --fast-r: 0deg;
+  --nebula-x: 0px;
+  --nebula-y: 0px;
+  position: fixed;
+  inset: 60px 0 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  isolation: isolate;
+}
+
+.site-parallax::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: -18%;
+  background:
+    radial-gradient(circle at 78% 20%, rgba(98, 120, 222, 0.2), transparent 28%),
+    radial-gradient(circle at 18% 74%, rgba(139, 156, 249, 0.12), transparent 25%),
+    radial-gradient(ellipse 42% 30% at 52% 48%, rgba(61, 78, 148, 0.09), transparent 74%);
+  transform: translate3d(var(--nebula-x), var(--nebula-y), 0) scale(1.08);
+  transform-origin: center;
+  will-change: transform;
+}
+
+.space-layer {
+  position: absolute;
+  z-index: 1;
+  inset: -6%;
+  width: 112%;
+  height: 112%;
+  overflow: visible;
+  transform-origin: center;
+  will-change: transform;
+}
+
+.space-layer-slow {
+  opacity: 0.78;
+  transform: translate3d(var(--slow-x), var(--slow-y), 0) rotate(var(--slow-r)) scale(1.04);
+}
+
+.space-layer-mid {
+  z-index: 2;
+  opacity: 0.84;
+  transform: translate3d(var(--mid-x), var(--mid-y), 0) rotate(var(--mid-r)) scale(1.06);
+}
+
+.space-layer-fast {
+  z-index: 3;
+  opacity: 0.94;
+  transform: translate3d(var(--fast-x), var(--fast-y), 0) rotate(var(--fast-r)) scale(1.08);
+}
+
+.space-orb {
+  stroke: rgba(165, 179, 251, 0.18);
+  stroke-width: 1;
+  filter: drop-shadow(0 0 50px rgba(86, 108, 205, 0.2));
+  /* fills are inline radial gradients (per-planet shading) */
+}
+
+.space-orbit {
+  fill: none;
+  stroke: rgba(150, 166, 252, 0.34);
+  stroke-width: 1.2;
+  stroke-dasharray: 7 10;
+}
+
+.space-orbit.fine {
+  stroke-width: 0.9;
+  stroke-dasharray: 3 12;
+}
+
+/* the ring's front pass, where it crosses the planet's face */
+.space-orbit.front {
+  stroke: rgba(168, 182, 253, 0.44);
+}
+
+.space-star { fill: rgba(181, 192, 255, 0.48); }
+.space-star.faint { fill: rgba(181, 192, 255, 0.22); }
+.space-star.bright { fill: rgba(215, 222, 255, 0.66); }
+
+.space-sparkle {
+  fill: none;
+  stroke: rgba(205, 214, 255, 0.5);
+  stroke-width: 1;
+  stroke-linecap: round;
+}
+
+.space-comet {
+  fill: none;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  /* stroke color comes from the inline fading-tail gradients */
+}

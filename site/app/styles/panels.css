@@ -1,0 +1,15 @@
+/* ------------------------------ glass panels ----------------------------- */
+
+.panel {
+  background: var(--glass);
+  backdrop-filter: blur(22px) saturate(1.5);
+  border: 1px solid var(--hairline-strong);
+  border-radius: 12px;
+  box-shadow: var(--shadow-panel);
+}
+
+.card {
+  background: var(--bg-elev);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+}

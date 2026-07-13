@@ -1,0 +1,23 @@
+/* ------------------------------ privacy page ----------------------------- */
+
+.prose {
+  max-width: 680px;
+  padding: 140px 0 90px;
+}
+
+.prose h1 {
+  font-size: 34px;
+  letter-spacing: -0.02em;
+  margin: 0 0 24px;
+}
+
+.prose h2 {
+  font-size: 20px;
+  margin: 36px 0 10px;
+}
+
+.prose p,
+.prose li {
+  color: var(--text-dim);
+  font-size: 15.5px;
+}

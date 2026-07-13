@@ -1,0 +1,527 @@
+/* ------------------------------ menu bar mock ---------------------------- */
+
+/* the "screen": wallpaper behind menu bar + floating dropdown.
+   No border — a hairline over a bright wallpaper reads as a stray line
+   on the left/right edges. Radius + shadow carry the framing. */
+.mock-screen {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow-panel);
+  background: url("/wallpaper-1600.webp") center / cover no-repeat, #101116;
+}
+
+.mock-menubar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  height: 34px;
+  padding: 0 16px;
+  background: rgba(20, 21, 26, 0.55);
+  backdrop-filter: blur(14px) saturate(1.4);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.mock-menubar .mb-icon {
+  width: 16px;
+  height: 16px;
+  opacity: 0.75;
+}
+
+.mock-menubar .mb-app {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 24px;
+  border-radius: 5px;
+  background: rgba(139, 156, 249, 0.22);
+}
+
+.mock-menubar .mb-app svg {
+  width: 15px;
+  height: 15px;
+  color: var(--accent-bright);
+}
+
+.mock-desktop {
+  padding: 10px 14px 18px;
+  /* subtle scrim so the frosted dropdown reads over any wallpaper */
+  background: linear-gradient(
+    180deg,
+    rgba(16, 17, 22, 0.28),
+    rgba(16, 17, 22, 0.5)
+  );
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Fixed-size panel at the app's real width (PopoverViews.swift:
+   .frame(width: 380, height: 575)), slightly taller than the app so the
+   links state breathes. The list area is reserved up front and the strip
+   footprint is constant, so no state ever changes the layout. */
+.mock-dropdown {
+  width: min(380px, 100%);
+  height: 592px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  /* .hudWindow-like: clearly a solid panel; the wallpaper only ghosts
+     through the blur, it never shows distinct shapes. */
+  background: rgba(20, 21, 26, 0.92);
+  position: relative;
+}
+
+/* the app's popover beak: the panel visibly hangs from the menu-bar
+   droplet (DropdownShape in PopoverViews.swift). A rotated square whose
+   top corner pokes above the panel; `right` centers it under the icon. */
+.mock-dropdown::after {
+  content: "";
+  position: absolute;
+  top: -7.5px; /* abut the panel edge exactly — any overlap double-darkens */
+  right: 149px;
+  width: 15px;
+  height: 15px;
+  transform: rotate(45deg);
+  /* keep only the half poking above the panel edge — the lower half would
+     double-darken on top of the panel's own translucent surface */
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+  /* tuned by pixel-matching against the panel's rendered top edge: the
+     beak sits over the bright wallpaper strip, so it needs a thinner tint
+     and a local blur to land on the same final color as the panel */
+  background: rgba(25, 24, 28, 0.58);
+  backdrop-filter: blur(9px) saturate(1.5);
+  border-top-left-radius: 3px;
+}
+
+.mock-strip {
+  border: 1.5px dashed rgba(255, 255, 255, 0.04);
+  border-radius: var(--radius-sm);
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  /* no transition: the strip remounts when the links state closes, and a
+     transition on a fresh element can flash through transient colors */
+}
+
+.mock-strip.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(139, 156, 249, 0.06);
+}
+
+.mock-links {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 7px;
+}
+
+.mock-links .name {
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.mock-link-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--hairline);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  text-decoration: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.mock-link-btn:hover {
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.mock-link-btn.copied {
+  border-color: rgba(139, 156, 249, 0.55);
+  color: var(--accent-bright);
+}
+
+.mock-link-btn svg {
+  width: 13px;
+  height: 13px;
+  opacity: 0.7;
+  flex: none;
+}
+
+/* --- dropdown chrome, mirroring ShareListView's toolbar/pathbar/footer --- */
+
+.mock-toolbar,
+.mock-pathbar {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 0 14px;
+  color: var(--text-dim);
+}
+
+/* Hard-locked height: appearing captions ("N selected") or confirm pairs
+   must never change the toolbar's geometry. */
+.mock-toolbar {
+  height: 33px;
+  flex: none;
+  overflow: hidden;
+}
+
+.mock-pathbar {
+  gap: 6px;
+  padding: 0 14px;
+  height: 27px;
+  flex: none;
+  border-top: 1px solid var(--hairline);
+  font-size: 12px;
+}
+
+.mock-ticon {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  display: inline-flex;
+}
+
+.mock-ticon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.mock-tspacer {
+  flex: 1;
+}
+
+.mock-crumb {
+  color: var(--text);
+}
+
+.mock-crumb-sep {
+  width: 9px;
+  height: 9px;
+  display: inline-flex;
+  color: var(--text-faint);
+}
+
+.mock-crumb-sep svg {
+  width: 100%;
+  height: 100%;
+}
+
+.mock-list {
+  flex: 1; /* reserved up front — rows appear inside, no growth */
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--hairline);
+}
+
+.mock-lrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+.mock-lrow.hl {
+  background: rgba(139, 156, 249, 0.16);
+}
+
+.mock-lrow.enter {
+  animation: rowEnter 0.35s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+@keyframes rowEnter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.mock-lrow .ric {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  display: inline-flex;
+  color: var(--text-faint);
+}
+
+.mock-lrow .ric svg {
+  width: 100%;
+  height: 100%;
+}
+
+
+.thumb30 {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--hairline);
+  color: var(--text-dim);
+}
+
+.thumb30 svg {
+  width: 15px;
+  height: 15px;
+}
+
+.mock-lrow .rinfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.mock-lrow .rtitle {
+  display: block;
+  font-size: 12.5px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mock-lrow .rmeta {
+  display: block;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.mock-strip-area {
+  height: 180px; /* fixed footprint shared by idle/uploading/links states */
+  box-sizing: border-box;
+  flex: none;
+  padding: 8px 10px;
+  /* softer than --hairline: this seam should barely register */
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.mock-footer {
+  padding: 6px 14px 8px;
+  font-size: 11px;
+  color: var(--text-faint);
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+/* uploading state: the ring is the cancel button, like the app */
+.mock-uploading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 10px;
+  height: 100%;
+  box-sizing: border-box;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.ringbtn {
+  width: 32px;
+  height: 32px;
+  flex: none;
+}
+
+.ringbtn svg {
+  width: 100%;
+  height: 100%;
+}
+
+.ringbtn .track {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.18);
+  stroke-width: 3;
+}
+
+.ringbtn .bar {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: center;
+}
+
+.ringbtn .xm {
+  stroke: var(--text-faint);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  fill: none;
+}
+
+.mock-upinfo {
+  min-width: 0;
+}
+
+.mock-upinfo .upname {
+  display: block;
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mock-upinfo .uppct {
+  display: block;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.strip-icon {
+  width: 17px;
+  height: 17px;
+  display: inline-flex;
+  vertical-align: -3px;
+  margin-right: 8px;
+}
+
+.strip-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* ---------------------- functional dropdown controls --------------------- */
+
+/* toolbar / row icon buttons (borderless, like the app) */
+.mock-tbtn {
+  display: inline-flex;
+  width: 15px;
+  height: 15px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.mock-tbtn svg {
+  width: 100%;
+  height: 100%;
+}
+
+.mock-tbtn:not(:disabled):hover {
+  color: var(--text);
+}
+
+.mock-tbtn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.mock-tbtn.acc,
+.mock-tbtn.acc:not(:disabled):hover {
+  color: var(--accent);
+}
+
+/* inline confirm pair (replaces trash / circle-X, like the app) */
+.confirm-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.confirm-pair .mock-tbtn.ok,
+.confirm-pair .mock-tbtn.ok:hover {
+  color: #33c759;
+}
+
+.confirm-pair .mock-tbtn.no,
+.confirm-pair .mock-tbtn.no:hover {
+  color: var(--text-dim);
+}
+
+.selcount {
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-faint);
+  flex: none;
+}
+
+/* row content area is a real button (the app's tap target) */
+button.rinfo {
+  border: 0;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  display: block;
+}
+
+.mock-tbtn.spinning svg {
+  animation: tbtnSpin 0.6s ease-out;
+}
+
+@keyframes tbtnSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* row action buttons reuse .ric sizing */
+button.ric {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+button.ric:hover {
+  color: var(--text-dim);
+}
+
+.mock-lrow .ric.on {
+  color: var(--accent);
+}
+
+/* empty states, centered in the reserved list area */
+.mock-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: var(--text-faint);
+  font-size: 12.5px;
+  text-align: center;
+  white-space: pre-line;
+}
+
+.mock-empty svg {
+  width: 26px;
+  height: 26px;
+  opacity: 0.7;
+}

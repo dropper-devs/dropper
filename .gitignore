@@ -1,0 +1,32 @@
+# macOS
+.DS_Store
+
+# Swift build products
+.build/
+.swiftpm/
+build/
+dist/
+*.xcodeproj
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Node / Next.js / Cloudflare (site/)
+node_modules/
+.next/
+.open-next/
+.wrangler/
+*.tsbuildinfo
+next-env.d.ts
+
+# Local secrets — real values live as Cloudflare Worker secrets
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+.env
+.env.*
+
+# Logs
+*.log
+npm-debug.log*

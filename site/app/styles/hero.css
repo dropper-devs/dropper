@@ -1,0 +1,103 @@
+/* ---------------------------------- hero --------------------------------- */
+
+.hero {
+  padding: 170px 0 110px;
+  overflow: visible;
+}
+
+.hero::before {
+  content: "";
+  position: absolute;
+  top: -320px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1100px;
+  height: 780px;
+  background:
+    radial-gradient(closest-side, rgba(139, 156, 249, 0.16), transparent 70%);
+  pointer-events: none;
+}
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 6fr) minmax(0, 5fr);
+  gap: 56px;
+  align-items: center;
+  /* anchors the floating chip-arc layer */
+  position: relative;
+}
+
+/* Below the fixed 1100px composition: fluid two columns, demo top-aligned
+   beside the copy. The panel shrinks gracefully, so only stack when a
+   second column genuinely can't fit. */
+@media (max-width: 1179px) {
+  .hero-grid {
+    grid-template-columns: minmax(0, 6fr) minmax(0, 5fr);
+    gap: 40px;
+    align-items: start;
+  }
+
+  .hero-demo {
+    justify-self: end;
+  }
+}
+
+@media (max-width: 640px) {
+  .hero-grid {
+    grid-template-columns: 1fr;
+    gap: 56px;
+  }
+
+  /* outranks the later base `.hero-demo { justify-self: end }` */
+  .hero-grid .hero-demo {
+    justify-self: center;
+  }
+}
+
+.hero h1 {
+  font-size: clamp(38px, 6vw, 62px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  margin: 0 0 22px;
+}
+
+.hero h1 .accent {
+  color: var(--accent);
+}
+
+.hero-sub {
+  color: var(--text-dim);
+  font-size: 19px;
+  max-width: 520px;
+  margin: 0 0 34px;
+}
+
+.hero-ctas {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* ------------------------------ product shot ----------------------------- */
+
+.product-shot {
+  position: relative;
+}
+
+.product-shot > img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius);
+  border: 1px solid var(--hairline);
+  box-shadow: var(--shadow-panel);
+}
+
+.product-shot-caption {
+  color: var(--text-faint);
+  font-size: 13px;
+  text-align: center;
+  margin-top: 14px;
+}

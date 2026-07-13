@@ -1,0 +1,292 @@
+/* ----------------------------- browser mock ------------------------------ */
+
+.mock-browser {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--hairline-strong);
+  box-shadow: var(--shadow-panel);
+  /* the real share page's background (SharePage.swift), not the site bg */
+  background: #14151a;
+}
+
+.mock-browser-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: #1a1c24;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.mock-dots {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+.mock-dots i {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.mock-dots i:nth-child(1) { background: #ff5f57; }
+.mock-dots i:nth-child(2) { background: #febc2e; }
+.mock-dots i:nth-child(3) { background: #28c840; }
+
+.mock-urlbar {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--hairline);
+  border-radius: 7px;
+  padding: 5px 12px;
+  font: 12px/1.4 var(--mono);
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mock-urlbar .lock {
+  opacity: 0.6;
+  margin-right: 6px;
+}
+
+.mock-page {
+  padding: 34px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px; /* the real page's figure gap */
+  align-items: center;
+  background: #14151a;
+}
+
+/* one figure: content block with its centered caption-link below */
+.mock-share-file {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+/* the real figcaption: the filename IS the download link — centered,
+   underlined, dimmed */
+.mock-file-label {
+  display: block;
+  text-align: center;
+  color: rgba(215, 217, 224, 0.7);
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-all;
+}
+
+/* audio player — mirrors the real share page markup */
+.mock-player {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  background: var(--bg-elev);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+}
+
+.mock-play {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--accent);
+  color: var(--accent-ink);
+  display: grid;
+  place-items: center;
+  transition: background 0.15s;
+}
+
+.mock-player:hover .mock-play {
+  background: var(--accent-bright);
+}
+
+.mock-play svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.mock-wave {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 56px;
+}
+
+.mock-wave i {
+  flex: 1;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.22);
+  min-height: 2px;
+}
+
+.mock-wave i.played {
+  background: var(--accent);
+}
+
+.mock-time {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--text-dim);
+  flex: none;
+}
+
+.mock-caption {
+  color: var(--text-dim);
+  font-size: 12.5px;
+}
+
+/* video player mock */
+.mock-video {
+  width: 100%;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+}
+
+.mock-video .screen {
+  aspect-ratio: 16 / 7.2;
+  background:
+    radial-gradient(120% 140% at 20% 0%, rgba(139, 156, 249, 0.25), transparent 55%),
+    radial-gradient(100% 120% at 85% 100%, rgba(139, 156, 249, 0.12), transparent 60%),
+    #0b0c10;
+  /* flex + margin:auto — centers the icon on every engine (grid
+     place-items misplaced it on mobile Safari) */
+  display: flex;
+}
+
+.mock-video .screen svg {
+  margin: auto;
+}
+
+.mock-video .screen svg {
+  width: 44px;
+  height: 44px;
+  color: rgba(215, 217, 224, 0.85);
+}
+
+.mock-video .bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-elev);
+  padding: 10px 16px;
+}
+
+.mock-video .bar .mock-play {
+  width: 30px;
+  height: 30px;
+}
+
+.mock-video .bar .mock-play svg {
+  width: 11px;
+  height: 11px;
+}
+
+.mock-seek {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background:
+    linear-gradient(to right, var(--accent) 35%, rgba(255, 255, 255, 0.22) 35%);
+  position: relative;
+}
+
+.mock-seek::after {
+  content: "";
+  position: absolute;
+  left: 35%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #c7d0ff;
+}
+
+/* download card mock */
+.mock-dl-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  background: var(--bg-elev);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+
+.mock-dl-card svg {
+  width: 30px;
+  height: 30px;
+  color: var(--accent);
+  flex: none;
+}
+
+.mock-dl-card .info {
+  flex: 1;
+  min-width: 0;
+}
+
+.mock-dl-card .name {
+  display: block;
+  font-size: 13px;
+}
+
+.mock-dl-card .size {
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+.mock-dl-pill {
+  flex: none;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 999px;
+}
+
+/* markdown mock */
+.mock-md {
+  width: 100%;
+  background: var(--bg-elev);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.mock-md .h {
+  color: var(--text);
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.mock-md .line {
+  height: 7px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.09);
+  margin: 7px 0;
+}
+
+.mock-md .line.short { width: 62%; }
+.mock-md .line.code {
+  background: rgba(139, 156, 249, 0.16);
+  width: 78%;
+}

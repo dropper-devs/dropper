@@ -1,0 +1,33 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "dropper-site",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-07-12",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "dropper-site"
+    }
+  ],
+  "routes": [
+    { "pattern": "dropper.page", "custom_domain": true },
+    { "pattern": "www.dropper.page", "custom_domain": true }
+  ],
+  // Email capture storage (created 2026-07-12).
+  "kv_namespaces": [
+    { "binding": "SUBSCRIBERS", "id": "7a1b6015972640119cca821312bf488a" }
+  ],
+  // Public share pages are read through /share/*; uploads still use R2's
+  // authenticated S3 endpoint directly from the native app.
+  "r2_buckets": [
+    { "binding": "SHARE_BUCKET", "bucket_name": "dropper-page" }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}

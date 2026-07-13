@@ -1,0 +1,4 @@
+# Local-only secrets for `opennextjs-cloudflare preview` — real values
+# live as Cloudflare Worker secrets (wrangler secret put <NAME>).
+MIXPANEL_TOKEN=
+MIXPANEL_SECRET=

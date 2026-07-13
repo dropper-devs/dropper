@@ -1,0 +1,29 @@
+{
+  "note": "Hand-maintained: names/sizes for the four demo chips; their real share URLs live in components/demo/data.ts.",
+  "items": [
+    {
+      "kind": "image",
+      "file": "sample-image.png",
+      "bytes": 2808635,
+      "sizeLabel": "2.8 MB"
+    },
+    {
+      "kind": "audio",
+      "file": "sample-wav.wav",
+      "bytes": 4234636,
+      "sizeLabel": "4.2 MB"
+    },
+    {
+      "kind": "movie",
+      "file": "sample-movie.mp4",
+      "bytes": 9840497,
+      "sizeLabel": "9.8 MB"
+    },
+    {
+      "kind": "markdown",
+      "file": "sample-markdown.md",
+      "bytes": 2049,
+      "sizeLabel": "2 KB"
+    }
+  ]
+}
