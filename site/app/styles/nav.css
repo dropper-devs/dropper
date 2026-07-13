@@ -51,6 +51,17 @@
   color: var(--text);
 }
 
+.nav-github {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-dim);
+  transition: color 0.15s;
+}
+
+.nav-github:hover {
+  color: var(--text);
+}
+
 @media (max-width: 1179px) {
   .nav-links {
     display: none;

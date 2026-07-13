@@ -60,6 +60,25 @@ enum SigV4 {
         request.setValue(auth, forHTTPHeaderField: "Authorization")
     }
 
+    /// RFC 3986 unreserved characters — the only bytes SigV4 leaves bare.
+    private static let unreserved = CharacterSet(charactersIn:
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+
+    private static func percentEncode(_ text: String) -> String {
+        text.addingPercentEncoding(withAllowedCharacters: unreserved) ?? text
+    }
+
+    /// The canonical query encoding (sorted, unreserved-only) from DECODED
+    /// pairs. Request builders must put this exact string on the wire so the
+    /// signature always matches — there is deliberately no second encoder.
+    static func canonicalQueryString(_ pairs: [(String, String)]) -> String {
+        pairs
+            .map { (percentEncode($0.0), percentEncode($0.1)) }
+            .sorted { $0.0 < $1.0 }
+            .map { "\($0.0)=\($0.1)" }
+            .joined(separator: "&")
+    }
+
     /// Percent-encode each path segment S3-style (RFC 3986, '/' preserved).
     static func canonicalURI(_ url: URL) -> String {
         // URL.path strips trailing slashes; URLComponents preserves them —
@@ -67,26 +86,17 @@ enum SigV4 {
         let rawPath = URLComponents(url: url, resolvingAgainstBaseURL: false)?.path
             ?? url.path
         let path = rawPath.isEmpty ? "/" : rawPath
-        let unreserved = CharacterSet(charactersIn:
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
         return path.split(separator: "/", omittingEmptySubsequences: false).map { segment in
-            segment.addingPercentEncoding(withAllowedCharacters: unreserved) ?? String(segment)
+            percentEncode(String(segment))
         }.joined(separator: "/")
     }
 
     private static func canonicalQuery(_ url: URL) -> String {
+        // queryItems hands back decoded names/values — exactly what
+        // canonicalQueryString expects.
         guard let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
               !items.isEmpty else { return "" }
-        let unreserved = CharacterSet(charactersIn:
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
-        return items
-            .map { (
-                $0.name.addingPercentEncoding(withAllowedCharacters: unreserved) ?? $0.name,
-                ($0.value ?? "").addingPercentEncoding(withAllowedCharacters: unreserved) ?? ""
-            ) }
-            .sorted { $0.0 < $1.0 }
-            .map { "\($0.0)=\($0.1)" }
-            .joined(separator: "&")
+        return canonicalQueryString(items.map { ($0.name, $0.value ?? "") })
     }
 
     private static func isoTimestamp(_ date: Date) -> String {

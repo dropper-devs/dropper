@@ -9,7 +9,7 @@ export default function Ownership() {
           <div>
             <p className="section-kicker">Ownership</p>
             <h2 className="section-title">
-              Your bucket. Your domain. Your data.
+              Your bucket. Your account. Your data.
             </h2>
             <ul className="checklist">
               <li>
@@ -23,25 +23,30 @@ export default function Ownership() {
               <li>
                 <Tick />
                 <span>
-                  <strong>No subscription.</strong> The app is free.
-                  Cloudflare R2 has a generous free tier and zero egress
-                  fees — most people pay nothing at all.
+                  <strong>No subscription.</strong> Dropper is free — no
+                  plans, no accounts. Storage is your own Cloudflare R2
+                  bucket: the free tier covers 10 GB with zero egress
+                  fees, and anything beyond it Cloudflare bills to you
+                  directly.
                 </span>
               </li>
               <li>
                 <Tick />
                 <span>
-                  <strong>Your links, forever.</strong> Serve share pages
-                  from your own domain. If Dropper disappeared tomorrow,
-                  every link you ever sent would still work.
+                  <strong>Links that outlive the app.</strong> Share pages
+                  are plain files in your bucket, served from its public
+                  URL — or a custom domain you attach. If Dropper
+                  disappeared tomorrow, your links would keep working for
+                  as long as your bucket and its public endpoint stay up.
                 </span>
               </li>
               <li>
                 <Tick />
                 <span>
-                  <strong>Private by default.</strong> Every share URL
-                  carries a random suffix — links work only for the people
-                  you give them to.
+                  <strong>Unlisted by default.</strong> Every share URL
+                  ends in an unguessable random suffix, and there is no
+                  index to browse. Anyone you hand a link to can open it —
+                  no accounts, no passwords.
                 </span>
               </li>
             </ul>
@@ -54,11 +59,18 @@ export default function Ownership() {
               <span>/</span>
               <span className="slug">mixdown-final-v3-x8d2k1</span>
             </span>
-            <p style={{ color: "var(--text-dim)", fontSize: 15, margin: 0 }}>
-              Setup takes a few minutes: paste a Cloudflare API token
-              once, pick a bucket, and optionally point a domain at it.
-              Dropper keeps the token in your Mac&apos;s Keychain.
-            </p>
+            <div className="setup-assurance">
+              <p className="setup-assurance-title">
+                Set up once. It&apos;s yours.
+              </p>
+              <p>
+                The guided wizard connects your Cloudflare account, enables
+                your bucket&apos;s public r2.dev URL, and keeps your token
+                safely in your Mac&apos;s Keychain. Attach your own domain to
+                the bucket whenever you like — Dropper switches over with
+                one Settings field.
+              </p>
+            </div>
           </div>
         </Reveal>
       </div>

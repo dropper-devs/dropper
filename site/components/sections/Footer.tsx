@@ -1,4 +1,6 @@
 import DropGlyph from "@/components/ui/DropGlyph"
+import SmoothLink from "@/components/SmoothLink"
+import { GITHUB_URL } from "@/lib/site"
 import Link from "next/link"
 
 export default function Footer() {
@@ -10,8 +12,11 @@ export default function Footer() {
       </span>
       <span>© {new Date().getFullYear()} Temecula DSP</span>
       <span className="spacer" />
+      <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">
+        GitHub
+      </a>
       <Link href="/privacy">Privacy</Link>
-      <a href="#updates">Get updates</a>
+      <SmoothLink to="updates">Download</SmoothLink>
     </div>
   </footer>
   )

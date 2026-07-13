@@ -12,13 +12,11 @@ import type { ReactNode } from "react";
 export default function ProductShot({
   src,
   alt,
-  caption,
   children,
 }: {
   /** Optional real screenshot; falls back to the mockup children. */
   src?: string;
   alt: string;
-  caption?: string;
   children?: ReactNode;
 }) {
   return (
@@ -31,9 +29,6 @@ export default function ProductShot({
           {children}
         </div>
       )}
-      {caption ? (
-        <figcaption className="product-shot-caption">{caption}</figcaption>
-      ) : null}
     </figure>
   );
 }

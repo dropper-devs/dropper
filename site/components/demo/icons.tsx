@@ -143,16 +143,6 @@ export const icons = {
     />
   ),
   waveform: <I d={<path d="M3 12h1.5M7 8.5v7M11 5v14M15 8v8M19 10.5v3" />} />,
-  doc: (
-    <I
-      d={
-        <>
-          <path d="M6 2h9l5 5v15H6z" />
-          <path d="M15 2v5h5" />
-        </>
-      }
-    />
-  ),
   docText: (
     <I
       d={

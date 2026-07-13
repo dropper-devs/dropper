@@ -4,6 +4,7 @@
  */
 
 import demoManifest from "@/lib/demo-manifest.json"
+import { SITE_URL } from "@/lib/site"
 
 export type Kind = "image" | "audio" | "movie" | "markdown"
 export type RowID = "seed" | Kind
@@ -52,7 +53,7 @@ export function rowBytes(id: RowID): number {
 /** Links-strip content for a row. The seeded Gateshead Bridge row and the
     image chip intentionally share the same real sample-image page. */
 /* Real shares made with the actual app, served from the real bucket. */
-const SHARE_BASE = "https://dropper.page/share/site"
+const SHARE_BASE = `${SITE_URL}/share/site`
 const SAMPLE_IMAGE_SHARE = `${SHARE_BASE}/sample-image-9e3n8a`
 const REAL_SHARES: Record<Kind, string> = {
   movie: `${SHARE_BASE}/sample-movie-uhovwy`,

@@ -63,6 +63,24 @@ export const ENTER_FROM: Record<Kind, number> = {
   markdown: 180,
 }
 
+/* Per-chip float personality for HeroDemo's scroll spring + idle bob:
+   drift     — fraction of page scroll the chip lags behind
+   stiff     — spring stiffness; varied = organic
+   bobAmp    — idle undulation amplitude, px
+   bobPeriod — seconds per bob cycle
+   bobPhase  — phase offset
+   Distinct stiffnesses, periods and phases keep the cards from ever
+   moving in lockstep. */
+export const FLOAT: Record<
+  Kind,
+  { drift: number; stiff: number; bobAmp: number; bobPeriod: number; bobPhase: number }
+> = {
+  image: { drift: 0.2, stiff: 90, bobAmp: 3.5, bobPeriod: 6.5, bobPhase: 0 },
+  audio: { drift: 0.26, stiff: 68, bobAmp: 4.5, bobPeriod: 8.2, bobPhase: 2.1 },
+  movie: { drift: 0.17, stiff: 112, bobAmp: 3, bobPeriod: 5.6, bobPhase: 4.4 },
+  markdown: { drift: 0.23, stiff: 78, bobAmp: 5, bobPeriod: 7.3, bobPhase: 1.2 },
+}
+
 export function arcChipStyle(kind: Kind): CSSProperties {
   const t = CHIP_T[kind]
   const p = arrowPoint(t)

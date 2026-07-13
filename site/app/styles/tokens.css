@@ -1,13 +1,13 @@
 /* ---------------------------------------------------------------------------
-   Dropper marketing site — design tokens lifted straight from the app:
-   bg #14151a, elevated #1c1e27, accent #8b9cf9 (hover #a5b3fb),
-   text #d7d9e0, hairline rgba(255,255,255,0.07), radius 14px.
+   Dropper marketing site — design tokens lifted from the app: elevated
+   #1c1e27, accent #8b9cf9 (hover #a5b3fb), text #d7d9e0, hairline
+   rgba(255,255,255,0.07), radius 14px. The background runs deeper than the
+   app's #14151a — #07101f under the body's blue-black gradients.
 --------------------------------------------------------------------------- */
 
 :root {
   --bg: #07101f;
   --bg-elev: #1c1e27;
-  --bg-elev-2: #23263200;
   --accent: #8b9cf9;
   --accent-bright: #a5b3fb;
   --accent-ink: #14151a;

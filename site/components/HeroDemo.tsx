@@ -30,7 +30,6 @@ import { useEffect, useRef, useState } from "react"
 import {
   KINDS,
   DEMO_FILES,
-  SEED,
   rowTitle,
   rowMeta,
   rowBytes,
@@ -40,7 +39,7 @@ import {
 } from "./demo/data"
 import type { Kind, RowID, Phase, ListState } from "./demo/data"
 import { icons, kindIcon, chipLabel } from "./demo/icons"
-import { arcChipStyle, arrowLinePath, arrowHeadPath, ENTER_FROM } from "./demo/geometry"
+import { arcChipStyle, arrowLinePath, arrowHeadPath, ENTER_FROM, FLOAT } from "./demo/geometry"
 import { analytics } from "@/lib/analytics"
 
 /* -------------------------------- component ------------------------------ */
@@ -97,18 +96,15 @@ export default function HeroDemo() {
   useEffect(() => {
     const chips = Array.from(document.querySelectorAll<HTMLElement>(".chip-arc .chip"))
     if (chips.length === 0) return
-    const DRIFT = [0.2, 0.26, 0.17, 0.23] // fraction of scroll each chip lags
-    const STIFF = [90, 68, 112, 78] // spring stiffness; varied = organic
+    // Each chip's spring/bob personality lives in FLOAT (geometry.ts),
+    // keyed by the kind the chip carries in data-kind — never by DOM index.
+    const kinds = chips.map((el) => el.dataset.kind as Kind)
     const RATIO = 0.55 // damping ratio < 1 → slight overshoot
     // Idle undulation: a slow per-chip sine rides on top of the spring, so
-    // the cards gently bob even when the page is static. Distinct periods
-    // and phases keep them from ever moving in lockstep.
-    const BOB_AMP = [3.5, 4.5, 3, 5] // px
-    const BOB_PERIOD = [6.5, 8.2, 5.6, 7.3] // seconds per cycle
-    const BOB_PHASE = [0, 2.1, 4.4, 1.2]
+    // the cards gently bob even when the page is static.
     // Entrance: chips are server-rendered ENTER_FROM px below rest; start
     // the spring from there so they visibly rise into place on load.
-    const pos = KINDS.map((k) => ENTER_FROM[k])
+    const pos = kinds.map((k) => ENTER_FROM[k])
     const vel = chips.map(() => 0)
     let raf = 0
     let last = performance.now()
@@ -117,12 +113,12 @@ export default function HeroDemo() {
       last = now
       const t = now / 1000
       chips.forEach((el, i) => {
-        const target = window.scrollY * DRIFT[i]
-        const k = STIFF[i]
-        const c = 2 * Math.sqrt(k) * RATIO
-        vel[i] += ((target - pos[i]) * k - vel[i] * c) * dt
+        const { drift, stiff, bobAmp, bobPeriod, bobPhase } = FLOAT[kinds[i]]
+        const target = window.scrollY * drift
+        const c = 2 * Math.sqrt(stiff) * RATIO
+        vel[i] += ((target - pos[i]) * stiff - vel[i] * c) * dt
         pos[i] += vel[i] * dt
-        const bob = BOB_AMP[i] * Math.sin((2 * Math.PI * t) / BOB_PERIOD[i] + BOB_PHASE[i])
+        const bob = bobAmp * Math.sin((2 * Math.PI * t) / bobPeriod + bobPhase)
         el.style.setProperty("--float-y", `${(pos[i] + bob).toFixed(2)}px`)
       })
       // never stops: the bob runs whenever the tab is visible (rAF pauses
@@ -453,6 +449,7 @@ export default function HeroDemo() {
       type="button"
       className={`chip${k === "movie" && wiggle ? " wiggle" : ""}`}
       style={arc ? arcChipStyle(k) : undefined}
+      data-kind={k}
       draggable
       onDragStart={onDragStart(k)}
       onPointerDown={onChipPointerDown(k)}

@@ -1,4 +1,3 @@
-import Reveal from "@/components/Reveal"
 import HeroDemo from "@/components/HeroDemo"
 import SmoothLink from "@/components/SmoothLink"
 import DownloadButton from "@/components/ui/DownloadButton"
@@ -6,7 +5,7 @@ import { REQUIREMENTS } from "@/lib/site"
 
 export default function Hero() {
   return (
-    <section className="hero">
+    <section id="top" className="hero">
       <div className="container hero-grid">
         <div>
           <h1>
@@ -14,7 +13,7 @@ export default function Hero() {
             <br />
             <span className="accent">Get a link.</span>
             <br />
-            <span className="accent">Share it.</span>
+            <span className="accent">Share it beautifully.</span>
           </h1>
           <p className="hero-sub">
             Dropper lives in your Mac&apos;s menu bar. Drag anything onto

@@ -3,11 +3,12 @@ import Nav from "@/components/sections/Nav"
 import Hero from "@/components/sections/Hero"
 import HowItWorks from "@/components/sections/HowItWorks"
 import SharePages from "@/components/sections/SharePages"
-import Collections from "@/components/sections/Collections"
 import Screenshots from "@/components/sections/Screenshots"
+import Collections from "@/components/sections/Collections"
 import Conversion from "@/components/sections/Conversion"
 import Organize from "@/components/sections/Organize"
 import Ownership from "@/components/sections/Ownership"
+import SetupWizard from "@/components/sections/SetupWizard"
 import GetDropper from "@/components/sections/GetDropper"
 import Footer from "@/components/sections/Footer"
 
@@ -52,11 +53,12 @@ export default function Home() {
         <Hero />
         <HowItWorks />
         <SharePages />
-        <Collections />
         <Screenshots />
+        <Collections />
         <Conversion />
         <Organize />
         <Ownership />
+        <SetupWizard />
         <GetDropper />
       </main>
       <Footer />

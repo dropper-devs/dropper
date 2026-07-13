@@ -41,19 +41,11 @@ section {
   align-items: center;
 }
 
-.split.flip > :first-child {
-  order: 2;
-}
-
 @media (max-width: 1179px) {
-  .split,
-  .split.flip {
+  .split {
     /* minmax(0,…): a bare 1fr honors min-content width, letting wide
        children (the browser mockup) push the column past the viewport */
     grid-template-columns: minmax(0, 1fr);
     gap: 40px;
-  }
-  .split.flip > :first-child {
-    order: 0;
   }
 }

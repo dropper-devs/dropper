@@ -143,11 +143,6 @@
   flex: none;
 }
 
-.mock-caption {
-  color: var(--text-dim);
-  font-size: 12.5px;
-}
-
 /* video player mock */
 .mock-video {
   width: 100%;
@@ -169,9 +164,6 @@
 
 .mock-video .screen svg {
   margin: auto;
-}
-
-.mock-video .screen svg {
   width: 44px;
   height: 44px;
   color: rgba(215, 217, 224, 0.85);

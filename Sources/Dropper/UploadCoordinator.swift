@@ -1,5 +1,6 @@
 import AppKit
 import UniformTypeIdentifiers
+import UserNotifications
 
 /// The upload engine: drop preparation (conversions, peaks, thumbnails),
 /// sequential PUTs with progress, manifest/page publication, cancellation
@@ -77,8 +78,7 @@ final class UploadCoordinator {
                 let results = completed
                 await MainActor.run { self.finish(results: results) }
             } catch {
-                let wasCancelled = error is CancellationError
-                    || (error as? URLError)?.code == .cancelled
+                let wasCancelled = error.isCancellation
                 await MainActor.run {
                     if wasCancelled { self.cancelled() } else { self.fail(error) }
                 }
@@ -184,9 +184,7 @@ final class UploadCoordinator {
             return ShareResult(shareID: shareID, title: finalManifest.title,
                                pageURL: keys.pageURL, fileURL: fileURL)
         } catch {
-            let wasCancelled = error is CancellationError
-                || (error as? URLError)?.code == .cancelled
-            if wasCancelled {
+            if error.isCancellation {
                 // User bailed: remove the partial share so nothing orphans.
                 for key in uploadedKeys {
                     try? await client.delete(key: key)
@@ -310,9 +308,27 @@ final class UploadCoordinator {
     }
 }
 
+private extension Error {
+    /// Cancellation arrives two ways: CancellationError from Task checks, and
+    /// URLError.cancelled from a URLSession task torn down mid-flight.
+    var isCancellation: Bool {
+        self is CancellationError || (self as? URLError)?.code == .cancelled
+    }
+}
+
 @MainActor
 func copyToClipboard(_ text: String) {
     let pasteboard = NSPasteboard.general
     pasteboard.clearContents()
     pasteboard.setString(text, forType: .string)
+}
+
+@MainActor
+func postNotification(title: String, body: String) {
+    let content = UNMutableNotificationContent()
+    content.title = title
+    content.body = body
+    UNUserNotificationCenter.current().add(
+        UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+    ) { _ in }
 }

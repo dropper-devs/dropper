@@ -13,7 +13,11 @@ struct PopoverRootView: View {
                 if let store {
                     ShareListView(store: store, state: state, actions: actions)
                 } else {
-                    Text("No '\(Config.awsProfile)' profile in ~/.aws/credentials")
+                    // No stored token — the wizard (right-click the icon) is
+                    // the way in.
+                    Text("Not connected — run the Setup Wizard to link your Cloudflare account.")
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
                         .padding()
                 }
             }

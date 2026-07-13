@@ -5,7 +5,6 @@ import ImageIO
 import UniformTypeIdentifiers
 
 public enum MarkupRenderError: Error {
-    case flattenFailed
     case writeFailed
 }
 
@@ -230,7 +229,7 @@ public enum MarkupRender {
                 continue
             }
             let shapePath = path(for: shape, strokeWidth: shape.lineWidth)
-            if (shape.tool == .rect || shape.tool == .ellipse),
+            if shape.tool.supportsFill,
                let fillColorIndex = shape.fillColorIndex {
                 context.setFillColor(MarkupPalette.cgColor(fillColorIndex))
                 context.addPath(shapePath)

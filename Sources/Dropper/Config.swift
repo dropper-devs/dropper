@@ -10,7 +10,4 @@ enum Config {
     /// The configured `share` prefix makes public links land under /share/*;
     /// the site Worker reads that same namespaced key from the R2 bucket.
     static let publicBase = "https://dropper.page"
-
-    /// Fallback profile in ~/.aws/credentials when no API token is stored.
-    static let awsProfile = "r2"
 }

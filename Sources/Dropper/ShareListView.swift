@@ -2,13 +2,6 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
-private extension UTType {
-    /// Internal-only payload for moving files within an existing collection.
-    /// Finder file drags also advertise plain text, so plainText cannot safely
-    /// distinguish reordering from the external file-attachment destination.
-    static let dropperShareRow = UTType(exportedAs: "page.dropper.share-row")
-}
-
 struct ShareListView: View {
     @ObservedObject var store: ShareStore
     @ObservedObject var state: UIState
@@ -16,8 +9,7 @@ struct ShareListView: View {
     @State private var selection = Set<String>()    // selected child KEYS
     @State private var selectionAnchor: String?      // row id of the last click
     @State private var expanded = Set<String>()     // expanded share ids
-    @State private var confirming: String?          // share id or child key
-    @State private var confirmingBulk = false
+    @State private var confirming: String?          // confirm id (row id or bulk)
     @State private var revertTask: DispatchWorkItem?
     @State private var insertion: Insertion?        // reorder drop indicator
     @State private var newFolderName: String?       // non-nil: naming a folder
@@ -27,6 +19,12 @@ struct ShareListView: View {
         let key: String
         let after: Bool
     }
+
+    /// The toolbar's delete-selected confirm shares the row confirms' state
+    /// machine, so opening any confirm closes the others. No collision is
+    /// possible: share ids end in a random suffix, child keys contain "/",
+    /// and folder confirm ids are prefixed "folder:".
+    private static let bulkConfirmID = "bulk"
 
     private var allLeafKeys: Set<String> {
         Set(store.visibleItems.flatMap { $0.children.map(\.key) })
@@ -104,6 +102,32 @@ struct ShareListView: View {
         }
     }
 
+    /// One click model for parent and child rows, over the leaf keys the row
+    /// stands for.
+    private func handleSelectionClick(rowID: String, keys: Set<String>) {
+        state.highlightedID = nil
+        let flags = NSEvent.modifierFlags
+        if flags.contains(.shift) {
+            // shift-click: extend from the anchor over every row between
+            // (anchor keeps its place for the next range)
+            selectRange(to: rowID) { selection = keys }
+        } else if flags.contains(.command) {
+            // ⌘-click: toggle this row in/out of the selection
+            if selection.isSuperset(of: keys) {
+                selection.subtract(keys)
+            } else {
+                selection.formUnion(keys)
+            }
+            selectionAnchor = rowID
+        } else if selection == keys {
+            selection.removeAll() // sole selection: click deselects
+            selectionAnchor = nil
+        } else {
+            selection = keys
+            selectionAnchor = rowID
+        }
+    }
+
     /// Selection drives the strip. Fully selected shares contribute their
     /// plain page link (and a file link when single-file); partially
     /// selected collections contribute one anchored link per chosen file —
@@ -164,10 +188,10 @@ struct ShareListView: View {
             .disabled(store.visibleItems.isEmpty)
             .help("Select all")
 
-            if confirmingBulk {
+            if confirming == Self.bulkConfirmID {
                 HStack(spacing: 8) {
                     Button {
-                        withAnimation { confirmingBulk = false }
+                        withAnimation { confirming = nil }
                     } label: {
                         Image(systemName: "xmark").foregroundStyle(.secondary)
                     }
@@ -175,7 +199,7 @@ struct ShareListView: View {
                     .help("Cancel")
 
                     Button {
-                        withAnimation { confirmingBulk = false }
+                        withAnimation { confirming = nil }
                         deleteSelected()
                     } label: {
                         Image(systemName: "checkmark").foregroundStyle(.green)
@@ -186,20 +210,11 @@ struct ShareListView: View {
                 .padding(4)
                 .contentShape(Rectangle())
                 .transition(.scale.combined(with: .opacity))
-                .onHover { hovering in
-                    if hovering {
-                        cancelRevert()
-                    } else {
-                        scheduleRevert { if confirmingBulk { confirmingBulk = false } }
-                    }
-                }
+                .onHover(perform: confirmRevertOnHover(Self.bulkConfirmID))
             } else {
                 Button {
                     cancelRevert()
-                    withAnimation {
-                        confirmingBulk = true
-                        confirming = nil
-                    }
+                    withAnimation { confirming = Self.bulkConfirmID }
                 } label: {
                     Image(systemName: "trash")
                 }
@@ -393,14 +408,7 @@ struct ShareListView: View {
                 ? folderItem.name : "\(store.folder)/\(folderItem.name)"
             actions.navigate(prefix)
         }
-        .onHover { hovering in
-            let id = "folder:\(folderItem.name)"
-            if hovering {
-                if confirming == id { cancelRevert() }
-            } else if confirming == id {
-                scheduleRevert { if confirming == id { confirming = nil } }
-            }
-        }
+        .onHover(perform: confirmRevertOnHover("folder:\(folderItem.name)"))
     }
 
     /// Non-share files show for orientation only — no actions. This surface
@@ -539,10 +547,7 @@ struct ShareListView: View {
             } else {
                 Button {
                     cancelRevert()
-                    withAnimation {
-                        confirming = id
-                        confirmingBulk = false
-                    }
+                    withAnimation { confirming = id }
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.secondary)
@@ -564,6 +569,18 @@ struct ShareListView: View {
 
     private func cancelRevert() {
         revertTask?.cancel()
+    }
+
+    /// Hover handler for the view hosting the `id` confirm: entering pauses
+    /// the pending revert, leaving arms it.
+    private func confirmRevertOnHover(_ id: String) -> (Bool) -> Void {
+        { hovering in
+            if hovering {
+                if confirming == id { cancelRevert() }
+            } else if confirming == id {
+                scheduleRevert { if confirming == id { confirming = nil } }
+            }
+        }
     }
 
     private func parentRow(_ item: ShareItem) -> some View {
@@ -618,27 +635,7 @@ struct ShareListView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
             .onTapGesture {
-                state.highlightedID = nil
-                let flags = NSEvent.modifierFlags
-                if flags.contains(.shift) {
-                    // shift-click: extend from the anchor over every row
-                    // between (anchor keeps its place for the next range)
-                    selectRange(to: item.id) { selection = childKeys }
-                } else if flags.contains(.command) {
-                    // ⌘-click: toggle this share in/out of the selection
-                    if allSelected {
-                        selection.subtract(childKeys)
-                    } else {
-                        selection.formUnion(childKeys)
-                    }
-                    selectionAnchor = item.id
-                } else if allSelected, selection == childKeys {
-                    selection.removeAll() // sole selection: click deselects
-                    selectionAnchor = nil
-                } else {
-                    selection = childKeys
-                    selectionAnchor = item.id
-                }
+                handleSelectionClick(rowID: item.id, keys: childKeys)
             }
 
             if !store.showingArchive {
@@ -678,17 +675,8 @@ struct ShareListView: View {
         }
         .padding(.vertical, 3)
         .padding(.horizontal, 4)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color.accentColor.opacity(dropTargeted ? 0.28
-                                             : highlighted ? 0.16 : 0))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(Color.accentColor.opacity(dropTargeted ? 0.9 : 0), lineWidth: 1.5)
-        )
-        .opacity(store.deletingIDs.contains(item.id) ? 0.4 : 1)
-        .disabled(store.deletingIDs.contains(item.id))
+        .rowChrome(highlighted: highlighted, dropTargeted: dropTargeted,
+                   deleting: store.deletingIDs.contains(item.id))
         .onDrop(of: [.fileURL], delegate: ShareFileDropDelegate(
             enabled: canAttachFiles && !store.deletingIDs.contains(item.id),
             setTargeted: { targeted in
@@ -702,13 +690,7 @@ struct ShareListView: View {
                                 fileURL: item.children.count == 1
                                     ? item.fileURL.absoluteString : nil)
             }))
-        .onHover { hovering in
-            if hovering {
-                if confirming == item.id { cancelRevert() }
-            } else if confirming == item.id {
-                scheduleRevert { if confirming == item.id { confirming = nil } }
-            }
-        }
+        .onHover(perform: confirmRevertOnHover(item.id))
     }
 
     private func childRow(_ item: ShareItem, _ child: ShareChild) -> some View {
@@ -764,24 +746,7 @@ struct ShareListView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
             .onTapGesture {
-                state.highlightedID = nil
-                let flags = NSEvent.modifierFlags
-                if flags.contains(.shift) {
-                    selectRange(to: child.key) { selection = [child.key] }
-                } else if flags.contains(.command) {
-                    if selection.contains(child.key) {
-                        selection.remove(child.key)
-                    } else {
-                        selection.insert(child.key)
-                    }
-                    selectionAnchor = child.key
-                } else if selection == [child.key] {
-                    selection.removeAll() // sole selection: click deselects
-                    selectionAnchor = nil
-                } else {
-                    selection = [child.key]
-                    selectionAnchor = child.key
-                }
+                handleSelectionClick(rowID: child.key, keys: [child.key])
             }
 
             deleteControls(id: child.key, help: "Delete this file") {
@@ -793,17 +758,8 @@ struct ShareListView: View {
         .padding(.vertical, 2)
         .padding(.leading, 34)
         .padding(.trailing, 4)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color.accentColor.opacity(dropTargeted ? 0.28
-                                             : highlighted ? 0.16 : 0))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(Color.accentColor.opacity(dropTargeted ? 0.9 : 0), lineWidth: 1.5)
-        )
-        .opacity(store.deletingIDs.contains(child.key) ? 0.4 : 1)
-        .disabled(store.deletingIDs.contains(child.key))
+        .rowChrome(highlighted: highlighted, dropTargeted: dropTargeted,
+                   deleting: store.deletingIDs.contains(child.key))
         // Insertion gap: the target row parts to show where the drop lands.
         .padding(.top, insertion == Insertion(key: child.key, after: false) ? 16 : 0)
         .padding(.bottom, insertion == Insertion(key: child.key, after: true) ? 16 : 0)
@@ -844,13 +800,7 @@ struct ShareListView: View {
                                 pageURL: anchoredPageURL,
                                 fileURL: child.fileURL.absoluteString)
             }))
-        .onHover { hovering in
-            if hovering {
-                if confirming == child.key { cancelRevert() }
-            } else if confirming == child.key {
-                scheduleRevert { if confirming == child.key { confirming = nil } }
-            }
-        }
+        .onHover(perform: confirmRevertOnHover(child.key))
     }
 
     private var footer: some View {
@@ -944,74 +894,6 @@ struct ShareListView: View {
             .padding(.horizontal, 36)
     }
 
-    /// What the dragged rows look like while in flight.
-    private struct DragGhost: View {
-        let label: String
-        let icon: String
-
-        var body: some View {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .foregroundStyle(.secondary)
-                Text(label)
-                    .font(.callout)
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(nsColor: .windowBackgroundColor))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(Color.accentColor.opacity(0.6))
-            )
-        }
-    }
-
-    /// Accepts a Dropper-only row key; drops on the lower half of a row land
-    /// after it, upper half before it. Hover position drives the insertion gap.
-    private struct ReorderDropDelegate: DropDelegate {
-        let setInsertion: (Bool?) -> Void   // true/false = after/before; nil = exited
-        let perform: (String, Bool) -> Void
-
-        private func after(_ info: DropInfo) -> Bool {
-            info.location.y > 18  // ~half the row height
-        }
-
-        func validateDrop(info: DropInfo) -> Bool {
-            info.hasItemsConforming(to: [.dropperShareRow])
-        }
-
-        func dropEntered(info: DropInfo) {
-            setInsertion(after(info))
-        }
-
-        func dropUpdated(info: DropInfo) -> DropProposal? {
-            setInsertion(after(info))
-            return DropProposal(operation: .move)
-        }
-
-        func dropExited(info: DropInfo) {
-            setInsertion(nil)
-        }
-
-        func performDrop(info: DropInfo) -> Bool {
-            let landAfter = after(info)
-            setInsertion(nil)
-            guard let provider = info.itemProviders(for: [.dropperShareRow]).first
-            else { return false }
-            provider.loadDataRepresentation(
-                forTypeIdentifier: UTType.dropperShareRow.identifier
-            ) { data, _ in
-                guard let data, let key = String(data: data, encoding: .utf8) else { return }
-                DispatchQueue.main.async { perform(key, landAfter) }
-            }
-            return true
-        }
-    }
-
     private func placeholder(icon: String, text: String) -> some View {
         VStack(spacing: 8) {
             Image(systemName: icon)
@@ -1023,41 +905,23 @@ struct ShareListView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+}
 
-    /// External files attach to the explicit parent share represented by the
-    /// row. Internal child reordering continues through its plain-text target.
-    private struct ShareFileDropDelegate: DropDelegate {
-        let enabled: Bool
-        let setTargeted: (Bool) -> Void
-        let perform: ([NSItemProvider]) -> Bool
-
-        func validateDrop(info: DropInfo) -> Bool {
-            enabled && info.hasItemsConforming(to: [.fileURL])
-        }
-
-        func dropEntered(info: DropInfo) {
-            guard validateDrop(info: info) else { return }
-            setTargeted(true)
-        }
-
-        func dropUpdated(info: DropInfo) -> DropProposal? {
-            guard validateDrop(info: info) else { return DropProposal(operation: .cancel) }
-            setTargeted(true)
-            return DropProposal(operation: .copy)
-        }
-
-        func dropExited(info: DropInfo) {
-            setTargeted(false)
-        }
-
-        func performDrop(info: DropInfo) -> Bool {
-            guard validateDrop(info: info) else {
-                setTargeted(false)
-                return false
-            }
-            let providers = info.itemProviders(for: [.fileURL])
-            setTargeted(false)
-            return perform(providers)
-        }
+private extension View {
+    /// Shared row chrome: the selection/flash highlight fill, the external
+    /// file-drop ring, and mid-delete dimming.
+    func rowChrome(highlighted: Bool, dropTargeted: Bool,
+                   deleting: Bool) -> some View {
+        background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.accentColor.opacity(dropTargeted ? 0.28
+                                             : highlighted ? 0.16 : 0))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color.accentColor.opacity(dropTargeted ? 0.9 : 0), lineWidth: 1.5)
+        )
+        .opacity(deleting ? 0.4 : 1)
+        .disabled(deleting)
     }
 }

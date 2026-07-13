@@ -2,8 +2,9 @@ import AppKit
 import CoreGraphics
 import SwiftUI
 
-// Ported from screencam's SelectionOverlays.swift, trimmed to still capture:
-// no ready/record stage, one confirm action per overlay.
+// Full-screen pick-a-target overlays, one per display: whole-display capture
+// confirms in place; area capture adds a drag-out, movable, resizable
+// selection rectangle. Each overlay has exactly one confirm action.
 
 @MainActor
 final class DisplaySelectionOverlay {
@@ -141,7 +142,7 @@ private final class SelectionOverlayWindow: NSWindow {
     override var canBecomeMain: Bool { true }
 
     override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53 {
+        if event.keyCode == KeyCode.escape {
             cancelHandler?()
         } else {
             super.keyDown(with: event)

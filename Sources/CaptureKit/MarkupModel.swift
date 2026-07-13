@@ -8,6 +8,12 @@ public enum MarkupTool: CaseIterable, Sendable {
     case rect
     case pen
     case text
+
+    /// Only the closed shapes take a fill; everything else is pure stroke
+    /// (or text, which is drawn solid).
+    public var supportsFill: Bool {
+        self == .rect || self == .ellipse
+    }
 }
 
 public enum MarkupHandle: Equatable, Sendable {
@@ -253,11 +259,7 @@ public enum MarkupGeometry {
     public static func strokeHit(_ shape: MarkupShape, at point: CGPoint,
                                  tolerance: CGFloat) -> Bool {
         switch shape.tool {
-        case .arrow, .line:
-            return renderedPathHit(shape, at: point, tolerance: tolerance)
-        case .rect:
-            return renderedPathHit(shape, at: point, tolerance: tolerance)
-        case .ellipse:
+        case .arrow, .line, .rect, .ellipse:
             return renderedPathHit(shape, at: point, tolerance: tolerance)
         case .pen:
             guard shape.points.count > 1 else {

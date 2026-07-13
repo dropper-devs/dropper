@@ -304,12 +304,6 @@ final class ShareStore: ObservableObject {
         }
     }
 
-    /// Ownership-scoped delete: removes only what Dropper created — the files
-    /// in the manifest (fetched fresh, never from a stale snapshot) plus the
-    /// fixed artifact set. Files that ended up in the folder by other means
-    /// are never touched; they surface as leftovers in the refreshed list.
-    /// Deleting already-missing keys is a no-op (S3 returns success), which
-    /// is what keeps this tolerant of external deletions.
     /// Deletes an empty folder — just its zero-byte marker object. Folders
     /// with any content are never deletable from Dropper.
     func deleteEmptyFolder(named name: String) {
@@ -323,6 +317,12 @@ final class ShareStore: ObservableObject {
         }
     }
 
+    /// Ownership-scoped delete: removes only what Dropper created — the files
+    /// in the manifest (fetched fresh, never from a stale snapshot) plus the
+    /// fixed artifact set. Files that ended up in the folder by other means
+    /// are never touched; they surface as leftovers in the refreshed list.
+    /// Deleting already-missing keys is a no-op (S3 returns success), which
+    /// is what keeps this tolerant of external deletions.
     private func deleteOwned(of item: ShareItem) async throws {
         let shareKeys = keys(for: item.id)
         let manifest: Manifest? = item.hasManifest
@@ -410,8 +410,7 @@ final class ShareStore: ObservableObject {
     /// Group flat keys (<prefix>/<id>/<file>) into shares, newest first.
     nonisolated static func group(_ objects: [R2Object],
                                   config: AppConfigSnapshot)
-        -> (folders: [FolderRow], items: [ShareItem], loose: [LooseFile],
-            totalShares: Int) {
+        -> (folders: [FolderRow], items: [ShareItem], loose: [LooseFile]) {
         var byFolder: [String: [R2Object]] = [:]
         var looseObjects: [R2Object] = []
         var folderMarkers = Set<String>()
@@ -521,6 +520,6 @@ final class ShareStore: ObservableObject {
             )
         }
         .sorted { $0.date > $1.date }
-        return (folderRows, items, loose, items.count)
+        return (folderRows, items, loose)
     }
 }

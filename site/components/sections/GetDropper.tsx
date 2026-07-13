@@ -1,7 +1,7 @@
-import Reveal from "@/components/Reveal"
-import SubscribeForm from "@/components/SubscribeForm"
+// Email capture is paused for now; keep the component ready to restore.
+// import SubscribeForm from "@/components/SubscribeForm"
 import DownloadButton from "@/components/ui/DownloadButton"
-import { REQUIREMENTS } from "@/lib/site"
+import { GITHUB_URL, REQUIREMENTS } from "@/lib/site"
 
 export default function GetDropper() {
   return (
@@ -16,14 +16,18 @@ export default function GetDropper() {
               Get Dropper
             </h2>
             <p style={{ color: "var(--text-dim)", margin: 0 }}>
-              Free download. Or leave your email and we&apos;ll tell you
-              about new releases — nothing else.
+              Free download. No subscription. Source-available on{" "}
+              <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">
+                GitHub
+              </a>
+              .
             </p>
             <div style={{ marginTop: 26 }}>
               <DownloadButton />
               <p className="fine-print">{REQUIREMENTS}</p>
             </div>
-            <SubscribeForm />
+            {/* Email capture is intentionally hidden for now. */}
+            {/* <SubscribeForm /> */}
           </div>
         </div>
       </div>

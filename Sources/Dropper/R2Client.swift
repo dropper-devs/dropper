@@ -123,19 +123,10 @@ final class R2Client: NSObject, URLSessionTaskDelegate {
         var url = config.endpoint.appendingPathComponent(config.bucket)
         if let key { url.appendPathComponent(key) }
         if !query.isEmpty {
-            // Encode the wire query exactly like the SigV4 canonical form so
-            // the signature always matches (sorted, unreserved-only encoding).
+            // The wire query IS the SigV4 canonical form, so the signature
+            // always matches what's sent.
             var components = URLComponents(url: url, resolvingAgainstBaseURL: false)!
-            let unreserved = CharacterSet(charactersIn:
-                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
-            components.percentEncodedQuery = query
-                .map { (
-                    $0.0.addingPercentEncoding(withAllowedCharacters: unreserved)!,
-                    $0.1.addingPercentEncoding(withAllowedCharacters: unreserved)!
-                ) }
-                .sorted { $0.0 < $1.0 }
-                .map { "\($0.0)=\($0.1)" }
-                .joined(separator: "&")
+            components.percentEncodedQuery = SigV4.canonicalQueryString(query)
             url = components.url!
         }
         var request = URLRequest(url: url)

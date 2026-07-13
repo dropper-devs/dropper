@@ -112,7 +112,7 @@ enum CLI {
                 print("\(item.id)\t\(flags)\t\(item.title)\t\(item.size)\t\(item.date)\t\(item.pageURL)")
             }
             let total = objects.reduce(Int64(0)) { $0 + $1.size }
-            print("folder-total\t\(total) bytes\t\(grouped.totalShares) items")
+            print("folder-total\t\(total) bytes\t\(grouped.items.count) items")
         } else if let flag = args.firstIndex(of: "--delete"), flag + 1 < args.count {
             // Same ownership semantics as the UI: only Dropper's files go;
             // anything foreign in the folder is reported, not deleted.

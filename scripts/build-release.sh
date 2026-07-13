@@ -3,11 +3,17 @@ set -euo pipefail
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/config.sh"
 
-log "Building ${APP_DISPLAY_NAME} v${VERSION}"
-swift build --package-path "${PROJECT_ROOT}" -c release --product "${EXECUTABLE_PRODUCT}"
-BIN_DIR="$(swift build --package-path "${PROJECT_ROOT}" -c release --show-bin-path)"
+log "Building ${APP_DISPLAY_NAME} v${VERSION} (universal)"
+# Both slices: the site advertises Apple silicon & Intel. With multiple
+# --arch flags SwiftPM lipos the product into .build/apple/Products/Release.
+ARCH_FLAGS=(--arch arm64 --arch x86_64)
+swift build --package-path "${PROJECT_ROOT}" -c release "${ARCH_FLAGS[@]}" \
+    --product "${EXECUTABLE_PRODUCT}"
+BIN_DIR="$(swift build --package-path "${PROJECT_ROOT}" -c release "${ARCH_FLAGS[@]}" --show-bin-path)"
 PRODUCT="${BIN_DIR}/${EXECUTABLE_PRODUCT}"
 [[ -x "${PRODUCT}" ]] || die "Missing release executable at ${PRODUCT}"
+lipo "${PRODUCT}" -verify_arch arm64 x86_64 \
+    || die "Release executable is not a universal binary"
 
 rm -rf "${APP_BUNDLE}"
 mkdir -p "${APP_BUNDLE}/Contents/MacOS" "${RESOURCES_DIR}"

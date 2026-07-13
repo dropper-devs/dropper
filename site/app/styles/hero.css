@@ -94,10 +94,3 @@
   border: 1px solid var(--hairline);
   box-shadow: var(--shadow-panel);
 }
-
-.product-shot-caption {
-  color: var(--text-faint);
-  font-size: 13px;
-  text-align: center;
-  margin-top: 14px;
-}

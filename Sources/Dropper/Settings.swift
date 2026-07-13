@@ -56,17 +56,17 @@ enum ConfigStore {
             publicBase: d.string(forKey: keys.publicBase) ?? Config.publicBase)
     }
 
-    /// Keychain token (pasted once) wins; falls back to ~/.aws/credentials.
-    /// DROPPER_NO_KEYCHAIN=1 skips the Keychain — reading it can block on a
-    /// user authorization prompt, which deadlocks headless/test invocations.
+    /// S3 credentials derived from the Keychain token (pasted once) — the
+    /// only credential source. DROPPER_NO_KEYCHAIN=1 skips the Keychain —
+    /// reading it can block on a user authorization prompt, which deadlocks
+    /// headless/test invocations.
     static func resolveCredentials() -> AWSCredentials? {
-        if ProcessInfo.processInfo.environment["DROPPER_NO_KEYCHAIN"] != "1",
-           let token = Keychain.loadToken(),
-           let tokenID = UserDefaults.standard.string(forKey: keys.tokenID) {
-            return AWSCredentials(accessKeyId: tokenID,
-                                  secretAccessKey: sha256Hex(token))
-        }
-        return AWSCredentials.load(profile: Config.awsProfile)
+        guard ProcessInfo.processInfo.environment["DROPPER_NO_KEYCHAIN"] != "1",
+              let token = Keychain.loadToken(),
+              let tokenID = UserDefaults.standard.string(forKey: keys.tokenID)
+        else { return nil }
+        return AWSCredentials(accessKeyId: tokenID,
+                              secretAccessKey: sha256Hex(token))
     }
 
     /// The R2 S3 secret is defined as the SHA-256 of the API token value.

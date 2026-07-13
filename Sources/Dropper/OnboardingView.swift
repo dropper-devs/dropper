@@ -1,6 +1,5 @@
 import SwiftUI
 import AppKit
-import UserNotifications
 
 /// First-run wizard: walks a credential-less user from "no Cloudflare" to a
 /// fully configured Dropper with one pasted token. Everything after the paste
@@ -129,18 +128,23 @@ struct OnboardingView: View {
 
     private var welcome: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Drop a file. Get a link.")
-                .font(.system(size: 26, weight: .bold))
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Drop a file. Get a link.")
+                    .font(.system(size: 26, weight: .bold))
+                Text("Share it beautifully.")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(accent)
+            }
             Text("Dropper lives in your menu bar and turns anything you drop "
                  + "into a beautiful share page — stored in **your own** "
-                 + "Cloudflare account. Your bucket, your domain, your data.")
+                 + "Cloudflare account. Your bucket, your account, your data.")
                 .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 10) {
                 bullet("person.crop.circle", "A free Cloudflare account.")
                 bullet("creditcard",
                        "A payment method on file — **Cloudflare requires this "
-                       + "to enable R2 storage**, not us. The free tier is "
-                       + "real: 10 GB at $0, and Dropper typically stays "
+                       + "to enable R2 storage**, not us. The free tier "
+                       + "provides 10 GB at $0, and Dropper typically stays "
                        + "well inside it.")
                 bullet("clock", "About three minutes.")
             }
@@ -170,7 +174,7 @@ struct OnboardingView: View {
                 .font(.system(size: 24, weight: .bold))
             Text("Open R2 in your dashboard. The first visit asks for a "
                  + "payment method and an enable click — Cloudflare's "
-                 + "requirement for the (genuinely free) free tier.")
+                 + "requirement for its free tier.")
                 .foregroundStyle(.secondary)
             linkButton("Open R2 in the Dashboard",
                        url: "https://dash.cloudflare.com/?to=/:account/r2")
@@ -308,14 +312,10 @@ struct OnboardingView: View {
         ) { _, error in
             guard error != nil else { return }
             Task { @MainActor in
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(url, forType: .string)
-                let content = UNMutableNotificationContent()
-                content.title = "Couldn't open the browser"
-                content.body = "The link was copied instead — paste it into any browser."
-                UNUserNotificationCenter.current().add(
-                    UNNotificationRequest(identifier: UUID().uuidString,
-                                          content: content, trigger: nil)) { _ in }
+                copyToClipboard(url)
+                postNotification(
+                    title: "Couldn't open the browser",
+                    body: "The link was copied instead — paste it into any browser.")
             }
         }
     }

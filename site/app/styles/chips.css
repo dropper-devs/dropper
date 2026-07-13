@@ -36,6 +36,7 @@
 }
 
 .chip {
+  position: relative;
   display: grid;
   gap: 5px;
   justify-items: center;
@@ -257,10 +258,6 @@
   .chip {
     touch-action: none;
   }
-}
-
-.chip {
-  position: relative;
 }
 
 .chip.touch-dragging {
