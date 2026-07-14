@@ -122,32 +122,3 @@ struct ShareFileDropDelegate: DropDelegate {
         return perform(providers)
     }
 }
-
-/// Watches the complete SwiftUI popover surface so the upload strip can show
-/// its multi-file choice before the pointer reaches the strip itself. More
-/// specific row and strip destinations still perform the actual drops.
-struct PopoverFileDragObserver: DropDelegate {
-    let updateCount: (Int) -> Void
-
-    func validateDrop(info: DropInfo) -> Bool {
-        info.hasItemsConforming(to: [.fileURL])
-    }
-
-    func dropEntered(info: DropInfo) {
-        updateCount(info.itemProviders(for: [.fileURL]).count)
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        updateCount(info.itemProviders(for: [.fileURL]).count)
-        return DropProposal(operation: .copy)
-    }
-
-    func dropExited(info: DropInfo) {
-        updateCount(0)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        updateCount(0)
-        return false
-    }
-}

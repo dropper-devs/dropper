@@ -22,7 +22,7 @@ Website & download: [dropper.page](https://dropper.page)
 | `Tests/` | Unit tests for both targets |
 | `site/` | Marketing site on Cloudflare Workers — see [`site/README.md`](site/README.md) |
 | `workers/` | Small native Worker serving `/share/*` directly from R2, outside Next/OpenNext |
-| `Makefile`, `build.conf`, `scripts/` | Local build and the release pipeline (build → sign → notarize → dmg → upload) |
+| `Makefile`, `build.conf`, `scripts/` | Local build and the release pipeline (build → sign → notarize → dmg → upload → tag) |
 | `tools/` | Build-time helpers (app icon generator) |
 
 ## Building from source
@@ -50,7 +50,12 @@ code as the UI — run it with `--list`, `--delete <id>`, `--verify-token
 `make release` runs the full distribution pipeline defined in `scripts/` and
 configured by `build.conf`. It requires a Developer ID certificate, a
 notarization profile, and Wrangler access to the R2 bucket — see those files
-for the specifics.
+for the specifics. After a successful upload, it creates the annotated Git tag
+`v<VERSION>` and pushes that tag only. Releasing the same version again moves
+that version's tag to the new commit; changing `VERSION` creates a new tag.
+GitHub Releases and GitHub-hosted binaries are not part of this process.
+Set `TAG_MESSAGE_FILE=/path/to/notes.txt` to use approved release notes as the
+annotated tag message; otherwise the message is simply `Dropper v<VERSION>`.
 
 ## Website
 

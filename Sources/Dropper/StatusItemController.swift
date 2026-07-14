@@ -18,6 +18,21 @@ struct PopoverActions {
     var dropCommitted: () -> Void
 }
 
+/// Counts advertised file items without asking the drag source to materialize
+/// their URLs. The actual URLs are resolved once, only after a drop commits.
+func advertisedFileCount(on pasteboard: NSPasteboard) -> Int {
+    guard let items = pasteboard.pasteboardItems else {
+        return pasteboard.availableType(from: [.fileURL]) == nil ? 0 : 1
+    }
+    return items.reduce(into: 0) { count, item in
+        if item.types.contains(.fileURL) { count += 1 }
+    }
+}
+
+private func advertisedFileCount(in sender: NSDraggingInfo) -> Int {
+    advertisedFileCount(on: sender.draggingPasteboard)
+}
+
 /// Borderless key-capable panel — NSPopover proved unreliable for a
 /// persistent dropdown (size drift, off-screen spawns), so the dropdown is a
 /// floating panel positioned and clamped by hand.
@@ -27,24 +42,17 @@ private final class DropdownPanel: NSPanel {
 
     override var canBecomeKey: Bool { true }
 
-    private func fileCount(in sender: NSDraggingInfo) -> Int {
-        let urls = sender.draggingPasteboard.readObjects(
-            forClasses: [NSURL.self],
-            options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
-        return urls.count
-    }
-
     // NSWindow's drag-destination hooks are imported as informal protocol
     // methods, so these intentionally do not use `override`. Registered
     // SwiftUI row/strip views remain the concrete destinations; the panel is
     // the non-consuming fallback over the rest of the window.
     func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        onFileDragCount(fileCount(in: sender))
+        onFileDragCount(advertisedFileCount(in: sender))
         return []
     }
 
     func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        onFileDragCount(fileCount(in: sender))
+        onFileDragCount(advertisedFileCount(in: sender))
         return []
     }
 
@@ -53,6 +61,7 @@ private final class DropdownPanel: NSPanel {
     }
 
     func draggingEnded(_ sender: NSDraggingInfo) {
+        onFileDragCount(0)
         onFileDragEnded()
     }
 }
@@ -633,10 +642,7 @@ final class StatusDropView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        let urls = sender.draggingPasteboard.readObjects(
-            forClasses: [NSURL.self],
-            options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
-        onDragEntered(urls.count)
+        onDragEntered(advertisedFileCount(in: sender))
         return .copy
     }
 

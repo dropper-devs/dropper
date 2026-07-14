@@ -26,8 +26,6 @@ struct ShareListView: View {
     /// possible: share ids end in a random suffix, child keys contain "/",
     /// and folder confirm ids are prefixed "folder:".
     private static let bulkConfirmID = "bulk"
-    private static let popoverDropToken = "popover-surface"
-
     init(store: ShareStore, state: UIState, actions: PopoverActions) {
         self.store = store
         self.state = state
@@ -73,12 +71,7 @@ struct ShareListView: View {
         .onChange(of: selection) { _, _ in
             syncStripToSelection()
         }
-        .onDrop(of: [.fileURL], delegate: PopoverFileDragObserver(
-            updateCount: { count in
-                state.setDraggedFileCount(count, for: Self.popoverDropToken)
-            }))
         .onDisappear {
-            state.setDraggedFileCount(0, for: Self.popoverDropToken)
             if let fileDropTargetID {
                 state.setDraggedFileCount(0, for: dropToken(fileDropTargetID))
                 actions.setDropTargeted(dropToken(fileDropTargetID), false)

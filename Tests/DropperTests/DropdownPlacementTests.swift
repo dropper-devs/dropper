@@ -45,6 +45,36 @@ final class DropdownPlacementTests: XCTestCase {
     }
 }
 
+private final class LazyFileURLProvider: NSObject, NSPasteboardItemDataProvider {
+    private(set) var requestCount = 0
+
+    func pasteboard(_ pasteboard: NSPasteboard?, item: NSPasteboardItem,
+                    provideDataForType type: NSPasteboard.PasteboardType) {
+        requestCount += 1
+        item.setString("file:///tmp/dropper-drag-test.txt", forType: type)
+    }
+}
+
+final class AdvertisedFileCountTests: XCTestCase {
+    func testCountsFileItemsWithoutMaterializingTheirURLs() {
+        let pasteboard = NSPasteboard(
+            name: .init("page.dropper.tests.\(UUID().uuidString)"))
+        defer { pasteboard.clearContents() }
+
+        let providers = (0..<3).map { _ in LazyFileURLProvider() }
+        let items = providers.map { provider -> NSPasteboardItem in
+            let item = NSPasteboardItem()
+            item.setDataProvider(provider, forTypes: [.fileURL])
+            return item
+        }
+        XCTAssertTrue(pasteboard.writeObjects(items))
+        let requestsBeforeCounting = providers.map(\.requestCount)
+
+        XCTAssertEqual(advertisedFileCount(on: pasteboard), 3)
+        XCTAssertEqual(providers.map(\.requestCount), requestsBeforeCounting)
+    }
+}
+
 final class ActiveDropTargetsTests: XCTestCase {
     func testOutOfOrderExitDoesNotClearNewTarget() {
         var targets = ActiveDropTargets()
@@ -72,6 +102,16 @@ final class ActiveDropTargetsTests: XCTestCase {
         targets.set("row", active: true)
         targets.removeAll()
         XCTAssertTrue(targets.isEmpty)
+    }
+
+    func testPanelFallbackKeepsDragAliveAfterLeavingIcon() {
+        var targets = ActiveDropTargets()
+        targets.set("status-icon", active: true)
+        targets.set("popover-window", active: true)
+        targets.set("status-icon", active: false)
+
+        XCTAssertFalse(targets.isEmpty)
+        XCTAssertEqual(targets.ids, ["popover-window"])
     }
 }
 

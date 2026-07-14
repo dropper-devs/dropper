@@ -3,7 +3,7 @@ BUILD    := .build/release/$(APP)
 BUNDLE   := build/$(APP).app
 CONTENTS := $(BUNDLE)/Contents
 
-.PHONY: all build bundle icon install run clean info dist-build sign notarize dmg upload upload-only release
+.PHONY: all build bundle icon install run clean info release-check dist-build sign notarize dmg upload upload-only tag release
 
 all: bundle
 
@@ -11,6 +11,7 @@ info:
 	@. ./build.conf; \
 	echo "App:      $$APP_DISPLAY_NAME"; \
 	echo "Version:  $$VERSION"; \
+	echo "Tag:      v$$VERSION"; \
 	echo "R2:       $$R2_BUCKET/$$R2_PATH"
 
 build:
@@ -53,8 +54,11 @@ run: bundle
 	open "$(BUNDLE)"
 
 # Distribution pipeline, modeled after ScreenCam:
-# dist-build -> sign -> notarize -> dmg -> upload.
-dist-build:
+# dist-build -> sign -> notarize -> dmg -> upload -> tag.
+release-check:
+	@./scripts/tag-release.sh --check
+
+dist-build: release-check
 	@./scripts/build-release.sh
 
 sign: dist-build
@@ -72,8 +76,14 @@ upload: dmg
 upload-only:
 	@./scripts/upload.sh
 
+tag:
+	@./scripts/tag-release.sh
+
+# The tag is written last, so a failed build, notarization, or upload cannot
+# mark a commit as released.
 release: upload
-	@echo "Dropper release uploaded to R2."
+	@./scripts/tag-release.sh
+	@echo "Dropper release uploaded to R2 and tagged."
 
 clean:
 	rm -rf .build build dist

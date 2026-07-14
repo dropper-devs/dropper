@@ -44,11 +44,12 @@ final class UIState: ObservableObject {
 
     func setDraggedFileCount(_ count: Int, for targetID: String) {
         fileDragTargets.set(targetID, count: count)
-        draggedFileCount = fileDragTargets.fileCount
+        let nextCount = fileDragTargets.fileCount
+        if draggedFileCount != nextCount { draggedFileCount = nextCount }
     }
 
     func clearDraggedFiles() {
         fileDragTargets.removeAll()
-        draggedFileCount = 0
+        if draggedFileCount != 0 { draggedFileCount = 0 }
     }
 }
