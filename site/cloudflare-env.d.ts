@@ -3,7 +3,7 @@
 // Runtime types generated with workerd@1.20260708.1 2026-07-12 global_fetch_strictly_public,nodejs_compat
 interface __BaseEnv_CloudflareEnv {
 	SUBSCRIBERS: KVNamespace;
-	SHARE_BUCKET: R2Bucket;
+	DOWNLOAD_BUCKET: R2Bucket;
 	ASSETS: Fetcher;
 	NEXTJS_ENV: string;
 	WORKER_SELF_REFERENCE: Service<typeof import("./.open-next/worker").default>;

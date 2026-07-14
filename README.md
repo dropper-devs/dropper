@@ -20,7 +20,8 @@ Website & download: [dropper.page](https://dropper.page)
 | `Sources/Dropper` | The menu bar app (SwiftPM executable): UI, uploads, share pages, media conversion, onboarding |
 | `Sources/CaptureKit` | Screenshot capture and markup, as a separate library target |
 | `Tests/` | Unit tests for both targets |
-| `site/` | Marketing site + public share route on Cloudflare Workers — see [`site/README.md`](site/README.md) |
+| `site/` | Marketing site on Cloudflare Workers — see [`site/README.md`](site/README.md) |
+| `workers/` | Small native Worker serving `/share/*` directly from R2, outside Next/OpenNext |
 | `Makefile`, `build.conf`, `scripts/` | Local build and the release pipeline (build → sign → notarize → dmg → upload) |
 | `tools/` | Build-time helpers (app icon generator) |
 
@@ -53,9 +54,10 @@ for the specifics.
 
 ## Website
 
-The site in `site/` is a Next.js app deployed to Cloudflare Workers. The same
-Worker serves the public `/share/*` route that makes uploaded share pages
-reachable. It has its own README with setup, commands, and deployment notes.
+The site in `site/` is a Next.js app deployed to Cloudflare Workers. Public
+`/share/*` requests are handled separately by the small native R2 Worker in
+`workers/`, so media never enters Next or OpenNext. The site has its own README
+with setup, commands, and deployment notes.
 
 ## License
 

@@ -27,7 +27,7 @@ export interface ListState {
   selected: RowID[]
 }
 
-export const KINDS: Kind[] = ["image", "audio", "movie", "markdown"]
+export const KINDS: Kind[] = ["markdown", "audio", "movie", "image"]
 
 export const DEMO_FILES: Record<Kind, DemoFile> = Object.fromEntries(
   demoManifest.items.map((it) => [it.kind, { file: it.file, bytes: it.bytes, sizeLabel: it.sizeLabel }]),

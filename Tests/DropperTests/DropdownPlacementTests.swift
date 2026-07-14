@@ -74,3 +74,40 @@ final class ActiveDropTargetsTests: XCTestCase {
         XCTAssertTrue(targets.isEmpty)
     }
 }
+
+final class FileDragTargetsTests: XCTestCase {
+    func testNestedExitKeepsTheAdvertisedFileCount() {
+        var targets = FileDragTargets()
+        targets.set("popover", count: 4)
+        targets.set("row", count: 4)
+        targets.set("popover", count: 0)
+
+        XCTAssertEqual(targets.fileCount, 4)
+    }
+
+    func testLargestLiveProviderCountWins() {
+        var targets = FileDragTargets()
+        targets.set("popover", count: 3)
+        targets.set("strip", count: 2)
+
+        XCTAssertEqual(targets.fileCount, 3)
+    }
+
+    func testRemovingEveryTargetEndsThePreflight() {
+        var targets = FileDragTargets()
+        targets.set("popover", count: 2)
+        targets.set("popover", count: 0)
+
+        XCTAssertEqual(targets.fileCount, 0)
+        XCTAssertTrue(targets.counts.isEmpty)
+    }
+
+    func testSingleFileDoesNotPreviewBeforeTheStrip() {
+        XCTAssertEqual(dropStripFileCount(stripCount: 0, popoverCount: 1), 0)
+        XCTAssertEqual(dropStripFileCount(stripCount: 1, popoverCount: 1), 1)
+    }
+
+    func testMultipleFilesPreviewAcrossThePopover() {
+        XCTAssertEqual(dropStripFileCount(stripCount: 0, popoverCount: 4), 4)
+    }
+}

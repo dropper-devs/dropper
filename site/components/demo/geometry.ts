@@ -18,10 +18,10 @@ import type { Kind } from "./data"
    CHIP_TILT — optional extra degrees ADDED to each chip's curve-following
                rotation (0 = exactly along the curve) */
 export const CHIP_T: Record<Kind, number> = {
-  image: 0.075,
+  image: 0.75,
   audio: 0.3,
   movie: 0.58,
-  markdown: 0.75,
+  markdown: 0.075,
 }
 export const CHIP_TILT: Record<Kind, number> = {
   image: 0,

@@ -127,6 +127,10 @@ public final class MarkupWindowController: NSWindowController, NSWindowDelegate 
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancelClicked))
+        // Keep Command-Q local to the active capture editor. The button's
+        // window-scoped key equivalent handles it before the app menu can.
+        cancel.keyEquivalent = "q"
+        cancel.keyEquivalentModifierMask = [.command]
         let save = NSButton(title: "Save to Desktop", target: self,
                             action: #selector(saveToDesktopClicked))
         let upload = NSButton(title: "Upload", target: self, action: #selector(uploadClicked))

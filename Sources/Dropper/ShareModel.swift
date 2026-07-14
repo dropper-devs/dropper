@@ -22,7 +22,7 @@ enum MediaKind: String, Codable {
 /// is display order; it's what makes leaf deletes and reordering able to
 /// regenerate the page.
 struct Manifest: Codable, Equatable {
-    var version = 1
+    var version = 2
     var items: [ManifestItem]
     /// Which item's file the legacy share-level .thumb.jpg depicts.
     var thumb: String?
@@ -42,6 +42,7 @@ struct ManifestItem: Codable, Equatable {
     var peaks: [Int]?   // 0...100 waveform peaks (audio only)
     var width: Int?     // natural display size (video only) — stops the page
     var height: Int?    // from reflowing when metadata loads
+    var poster: String? = nil  // relative high-resolution video poster path
 }
 
 /// One prepared file of a drop: possibly a converted temp copy of the source.
@@ -121,6 +122,10 @@ struct ShareKeys {
     var legacyThumb: String { config.key("\(id)/.thumb.jpg") }
     func media(_ fileName: String) -> String { config.key("\(id)/\(fileName)") }
     func thumb(_ fileName: String) -> String { config.key("\(id)/.thumb.\(fileName).jpg") }
+    func posterName(_ fileName: String) -> String { ".poster.\(fileName).jpg" }
+    func poster(_ fileName: String) -> String {
+        config.key("\(id)/\(posterName(fileName))")
+    }
 
     // Public URLs
     var pageURL: String { "\(config.publicBase)/\(page)" }

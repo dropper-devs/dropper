@@ -53,7 +53,7 @@
   touch-action: manipulation;
   /* --float-y: scroll-spring offset (JS); translate first so the drift is
      screen-vertical regardless of the chip's tilt */
-  transform: translateY(var(--float-y, 0px)) rotate(var(--rot, 0deg));
+  transform: translate3d(0, var(--float-y, 0px), 0) rotate(var(--rot, 0deg));
 }
 
 .chip:hover,
@@ -125,6 +125,12 @@
   border-color: rgba(184, 194, 221, 0.48);
   border-radius: 9px;
   box-shadow: 0 18px 38px rgba(0, 3, 14, 0.28);
+  /* The spring supplies every transform frame. Keep it on its own compositor
+     layer without a CSS transform transition filtering or slowing it. */
+  will-change: transform;
+  backface-visibility: hidden;
+  transition: border-color 0.15s, color 0.15s, opacity 0.3s,
+    background 0.15s, box-shadow 0.15s;
 }
 
 .chip-arc-arrow {
@@ -148,6 +154,48 @@
 
 .chip-arc-arrow-line {
   stroke-dasharray: 10 7;
+  /* Keep the final pixels under the arrowhead completely hidden until the
+     reveal is armed; SVG mask antialiasing can otherwise leak a tiny cap. */
+  opacity: 0;
+}
+
+/* On first paint, a white mask draws along the curve from its tail to its
+   tip. The dashed arrow underneath is progressively revealed, then remains
+   fully visible; the arrowhead arrives only as the trace reaches it. */
+.chip-arc-arrow-reveal {
+  fill: none;
+  stroke: white;
+  stroke-width: 8;
+  stroke-linecap: butt;
+  stroke-dasharray: 1 1;
+  stroke-dashoffset: 1;
+}
+
+.chip-arc-arrow-head {
+  opacity: 0;
+}
+
+/* The React spring adds this class at the chips' first upper apex, just as
+   they reverse direction to settle. Adding it starts each animation once. */
+.chip-arc.chips-reached-apex .chip-arc-arrow-reveal {
+  animation: chipArcArrowReveal 1.44s cubic-bezier(0.22, 0.72, 0.2, 1) forwards;
+}
+
+.chip-arc.chips-reached-apex .chip-arc-arrow-line {
+  opacity: 1;
+}
+
+.chip-arc.chips-reached-apex .chip-arc-arrow-head {
+  animation: chipArcArrowHeadReveal 1.44s ease-out forwards;
+}
+
+@keyframes chipArcArrowReveal {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes chipArcArrowHeadReveal {
+  0%, 82% { opacity: 0; }
+  100% { opacity: 1; }
 }
 
 @media (min-width: 1180px) {
@@ -163,10 +211,10 @@
 /* periodic "you can drag me" nudge — a quick, small shake that rides on
    top of the chip's resting tilt */
 @keyframes chipWiggle {
-  0%, 100% { transform: translateY(var(--float-y, 0px)) rotate(var(--rot, 0deg)); }
-  20% { transform: translateY(calc(var(--float-y, 0px) - 3px)) rotate(calc(var(--rot, 0deg) + 4deg)); }
-  45% { transform: translateY(calc(var(--float-y, 0px) - 1px)) rotate(calc(var(--rot, 0deg) - 3.5deg)); }
-  70% { transform: translateY(var(--float-y, 0px)) rotate(calc(var(--rot, 0deg) + 2deg)); }
+  0%, 100% { transform: translate3d(0, var(--float-y, 0px), 0) rotate(var(--rot, 0deg)); }
+  20% { transform: translate3d(0, calc(var(--float-y, 0px) - 3px), 0) rotate(calc(var(--rot, 0deg) + 4deg)); }
+  45% { transform: translate3d(0, calc(var(--float-y, 0px) - 1px), 0) rotate(calc(var(--rot, 0deg) - 3.5deg)); }
+  70% { transform: translate3d(0, var(--float-y, 0px), 0) rotate(calc(var(--rot, 0deg) + 2deg)); }
 }
 
 .chip.wiggle {

@@ -116,6 +116,7 @@ public final class CaptureController: NSObject {
             var configuration = SCContentSharingPickerConfiguration()
             configuration.allowedPickerModes = [.singleWindow]
             configuration.allowsChangingSelectedContent = false
+            configuration.excludedBundleIDs = ["com.crowdcafe.windowmagnet"]
             picker.defaultConfiguration = configuration
             picker.maximumStreamCount = 1
             picker.isActive = true

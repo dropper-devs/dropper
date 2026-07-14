@@ -350,12 +350,16 @@ final class ShareStore: ObservableObject {
             for entry in manifest.items {
                 owned.insert(keys.media(entry.file))
                 owned.insert(keys.thumb(entry.file))
+                if entry.poster != nil {
+                    owned.insert(keys.poster(entry.file))
+                }
             }
         } else if hasPage {
             owned.formUnion(listedChildKeys)
             for key in listedChildKeys {
                 if let name = key.split(separator: "/").last {
                     owned.insert(keys.thumb(String(name)))
+                    owned.insert(keys.poster(String(name)))
                 }
             }
         }
@@ -372,15 +376,21 @@ final class ShareStore: ObservableObject {
         if item.hasManifest,
            let data = try? await client.get(key: shareKeys.manifest),
            var manifest = try? JSONDecoder().decode(Manifest.self, from: data) {
+            let removedItems = manifest.items.filter {
+                removedKeys.contains(shareKeys.media($0.file))
+            }
             let before = manifest.items.count
             manifest.items.removeAll { removedKeys.contains(shareKeys.media($0.file)) }
             if before == manifest.items.count {
                 // Only foreign files were deleted; the share is untouched.
                 return
             }
-            // Removed files take their thumbnails with them.
-            for child in children {
-                try? await client.delete(key: shareKeys.thumb(child.name))
+            // Removed files take their thumbnails and posters with them.
+            for removed in removedItems {
+                try? await client.delete(key: shareKeys.thumb(removed.file))
+                if removed.poster != nil {
+                    try? await client.delete(key: shareKeys.poster(removed.file))
+                }
             }
             if manifest.items.isEmpty {
                 // Last owned file gone: Dropper's artifacts go with it.

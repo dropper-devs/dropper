@@ -149,14 +149,36 @@ final class UploadCoordinator {
             try Task.checkCancellation()
             // Per-file thumbnails while the files are still local — the
             // one moment previews are cheap to make.
+            var posters: [String: String] = [:]
             for file in files where file.kind == .image || file.kind == .video {
-                guard let jpeg = await Thumbnailer.jpegThumbnail(
-                    of: file.sourceURL, kind: file.kind) else { continue }
-                try await client.put(
-                    data: jpeg, key: keys.thumb(file.fileName),
-                    contentType: "image/jpeg",
-                    cacheControl: "public, max-age=31536000, immutable")
-                uploadedKeys.append(keys.thumb(file.fileName))
+                try Task.checkCancellation()
+                if let jpeg = await Thumbnailer.jpegThumbnail(
+                    of: file.sourceURL, kind: file.kind) {
+                    try await client.put(
+                        data: jpeg, key: keys.thumb(file.fileName),
+                        contentType: "image/jpeg",
+                        cacheControl: "public, max-age=31536000, immutable")
+                    uploadedKeys.append(keys.thumb(file.fileName))
+                }
+
+                guard file.kind == .video else { continue }
+                let poster = await VideoPosterGenerator.jpegPoster(of: file.sourceURL)
+                try Task.checkCancellation()
+                guard let poster else { continue }
+                do {
+                    try await client.put(
+                        data: poster, key: keys.poster(file.fileName),
+                        contentType: "image/jpeg",
+                        cacheControl: "public, max-age=31536000, immutable")
+                    uploadedKeys.append(keys.poster(file.fileName))
+                    posters[file.fileName] = keys.posterName(file.fileName)
+                } catch {
+                    // A cosmetic preview should never sink an otherwise
+                    // successful video share. Cancellation still stops the
+                    // upload; other failures fall back to the small thumb.
+                    if error.isCancellation { throw error }
+                    NSLog("Dropper poster upload failed for \(file.fileName): \(error)")
+                }
             }
             // Manifest: fresh copy of the target share's (adds), or new.
             var manifest: Manifest
@@ -170,8 +192,10 @@ final class UploadCoordinator {
                 ManifestItem(file: $0.fileName, name: $0.displayName,
                              kind: $0.kind, size: $0.size, peaks: $0.peaks,
                              width: $0.dimensions?.width,
-                             height: $0.dimensions?.height)
+                             height: $0.dimensions?.height,
+                             poster: posters[$0.fileName])
             }
+            if !posters.isEmpty { manifest.version = 2 }
             try Task.checkCancellation()
             // Shielded from cancellation: manifest and page must land
             // together, or an existing share's manifest could be torn.

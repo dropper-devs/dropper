@@ -25,6 +25,7 @@ struct ShareListView: View {
     /// possible: share ids end in a random suffix, child keys contain "/",
     /// and folder confirm ids are prefixed "folder:".
     private static let bulkConfirmID = "bulk"
+    private static let popoverDropToken = "popover-surface"
 
     private var allLeafKeys: Set<String> {
         Set(store.visibleItems.flatMap { $0.children.map(\.key) })
@@ -64,8 +65,14 @@ struct ShareListView: View {
         .onChange(of: selection) { _, _ in
             syncStripToSelection()
         }
+        .onDrop(of: [.fileURL], delegate: PopoverFileDragObserver(
+            updateCount: { count in
+                state.setDraggedFileCount(count, for: Self.popoverDropToken)
+            }))
         .onDisappear {
+            state.setDraggedFileCount(0, for: Self.popoverDropToken)
             if let fileDropTargetID {
+                state.setDraggedFileCount(0, for: dropToken(fileDropTargetID))
                 actions.setDropTargeted(dropToken(fileDropTargetID), false)
             }
         }
@@ -618,8 +625,18 @@ struct ShareListView: View {
                           ? "chevron.down" : "chevron.right")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
+                        // Keep the glyph compact, but make all of the space
+                        // around it clickable instead of only the thin lines.
+                        .frame(width: 24, height: 30)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.borderless)
+                .contentShape(Rectangle())
+                // The 24px hit box consumes the HStack's existing 8px gaps
+                // on each side instead of pushing neighboring content away.
+                .padding(.horizontal, -8)
+                .help(expanded.contains(item.id)
+                      ? "Collapse collection" : "Expand collection")
             }
 
             thumbnail(url: item.thumbURL, kind: item.kind, side: 30)
@@ -681,6 +698,9 @@ struct ShareListView: View {
             enabled: canAttachFiles && !store.deletingIDs.contains(item.id),
             setTargeted: { targeted in
                 setFileDropTarget(item.id, targeted: targeted)
+            },
+            updateCount: { count in
+                state.setDraggedFileCount(count, for: dropToken(item.id))
             },
             perform: { providers in
                 performFileDrop(providers, into: item,
@@ -792,6 +812,9 @@ struct ShareListView: View {
             enabled: canAttachFiles && !store.deletingIDs.contains(child.key),
             setTargeted: { targeted in
                 setFileDropTarget(child.key, targeted: targeted)
+            },
+            updateCount: { count in
+                state.setDraggedFileCount(count, for: dropToken(child.key))
             },
             perform: { providers in
                 performFileDrop(providers, into: item,

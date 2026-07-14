@@ -1,0 +1,15 @@
+{
+  "$schema": "../site/node_modules/wrangler/config-schema.json",
+  "name": "dropper-share",
+  "main": "share.ts",
+  "compatibility_date": "2026-07-12",
+  "routes": [
+    { "pattern": "dropper.page/share/*", "zone_name": "dropper.page" }
+  ],
+  "r2_buckets": [
+    { "binding": "SHARE_BUCKET", "bucket_name": "dropper-page" }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}

@@ -97,11 +97,17 @@ struct VisualEffectBackground: NSViewRepresentable {
 struct DropStrip: View {
     @ObservedObject var state: UIState
     let actions: PopoverActions
-    @State private var dragCount = 0        // live file count while hovering
+    @State private var stripDragCount = 0  // only while actually over the strip
     @State private var separateSide = false // pointer over the right zone
     @State private var stripWidth: CGFloat = 1
     @State private var cancelHover = false
 
+    /// A single file previews only after it reaches the real drop zone. Two
+    /// or more files can preview the split from anywhere in the popover.
+    private var dragCount: Int {
+        dropStripFileCount(stripCount: stripDragCount,
+                           popoverCount: state.draggedFileCount)
+    }
     private var targeted: Bool { dragCount > 0 }
 
     private let dropTargetID = "bottom-upload-strip"
@@ -125,9 +131,12 @@ struct DropStrip: View {
             actions.setDropTargeted(dropTargetID, isTargeted)
         }
         .onChange(of: state.strip) { _, _ in
-            dragCount = 0
+            stripDragCount = 0
+            state.setDraggedFileCount(0, for: dropTargetID)
         }
         .onDisappear {
+            stripDragCount = 0
+            state.setDraggedFileCount(0, for: dropTargetID)
             actions.setDropTargeted(dropTargetID, false)
         }
     }
@@ -222,13 +231,17 @@ struct DropStrip: View {
                     midX: { strip.stripWidth / 2 },
                     update: { count, right in
                         withAnimation(.easeInOut(duration: 0.12)) {
-                            strip.dragCount = count
+                            strip.stripDragCount = count
+                            strip.state.setDraggedFileCount(count,
+                                                           for: strip.dropTargetID)
                             strip.separateSide = right
                         }
                     },
                     exit: {
                         withAnimation(.easeInOut(duration: 0.12)) {
-                            strip.dragCount = 0
+                            strip.stripDragCount = 0
+                            strip.state.setDraggedFileCount(0,
+                                                           for: strip.dropTargetID)
                         }
                     },
                     perform: { separate, providers in
@@ -239,7 +252,8 @@ struct DropStrip: View {
 
     fileprivate func performDrop(separate: Bool, providers: [NSItemProvider]) -> Bool {
         guard !providers.isEmpty else { return false }
-        dragCount = 0
+        stripDragCount = 0
+        state.clearDraggedFiles()
         actions.dropCommitted()
         loadFileURLs(from: providers) { urls in
             guard !urls.isEmpty else { return }
@@ -347,6 +361,12 @@ struct DropStrip: View {
         }
         .buttonStyle(.bordered)
     }
+}
+
+/// Keeps the early-preview rule independent and testable: the popover-wide
+/// observation affects the strip only for a genuine multi-file drag.
+func dropStripFileCount(stripCount: Int, popoverCount: Int) -> Int {
+    max(stripCount, popoverCount > 1 ? popoverCount : 0)
 }
 
 /// Tracks how many files are hovering and which half of the strip the

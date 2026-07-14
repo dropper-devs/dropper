@@ -55,6 +55,7 @@ export default function HeroDemo() {
   const [confirming, setConfirming] = useState<RowID | "bulk" | null>(null)
   const [spinning, setSpinning] = useState(false)
   const [copied, setCopied] = useState<{ which: "page" | "file"; ok: boolean } | null>(null)
+  const [chipsReachedApex, setChipsReachedApex] = useState(false)
   // Nudge animation: the movie chip wiggles periodically until the visitor
   // engages with any chip (drag or tap), then never again.
   const [wiggle, setWiggle] = useState(false)
@@ -106,6 +107,8 @@ export default function HeroDemo() {
     // the spring from there so they visibly rise into place on load.
     const pos = kinds.map((k) => ENTER_FROM[k])
     const vel = chips.map(() => 0)
+    const reachedApex = chips.map(() => false)
+    let entranceApexFinished = false
     let raf = 0
     let last = performance.now()
     const tick = (now: number) => {
@@ -116,11 +119,26 @@ export default function HeroDemo() {
         const { drift, stiff, bobAmp, bobPeriod, bobPhase } = FLOAT[kinds[i]]
         const target = window.scrollY * drift
         const c = 2 * Math.sqrt(stiff) * RATIO
+        const previousVelocity = vel[i]
         vel[i] += ((target - pos[i]) * stiff - vel[i] * c) * dt
         pos[i] += vel[i] * dt
+        // The first upward overshoot ends when velocity changes from rising
+        // (negative Y) to falling (positive Y) above the resting position.
+        if (
+          !reachedApex[i] &&
+          previousVelocity < 0 &&
+          vel[i] >= 0 &&
+          pos[i] < target
+        ) {
+          reachedApex[i] = true
+        }
         const bob = bobAmp * Math.sin((2 * Math.PI * t) / bobPeriod + bobPhase)
         el.style.setProperty("--float-y", `${(pos[i] + bob).toFixed(2)}px`)
       })
+      if (!entranceApexFinished && reachedApex.every(Boolean)) {
+        entranceApexFinished = true
+        setChipsReachedApex(true)
+      }
       // never stops: the bob runs whenever the tab is visible (rAF pauses
       // itself in background tabs)
       raf = requestAnimationFrame(tick)
@@ -137,10 +155,10 @@ export default function HeroDemo() {
       setWiggle(true)
       setTimeout(() => setWiggle(false), 700)
     }
-    const first = setTimeout(nudge, 2000)
+    // Give visitors time to take in the hero and the arrow entrance before
+    // the movie chip offers its first subtle interaction hint.
     const repeat = setInterval(nudge, 10000)
     return () => {
-      clearTimeout(first)
       clearInterval(repeat)
     }
   }, [])
@@ -470,9 +488,33 @@ export default function HeroDemo() {
       {/* Desktop: chips scattered along an arc in the hero's negative space.
           Anchored to the demo so their relationship cannot drift; hidden under 1180px
           where the plain .chip-row below the mock takes over. */}
-      <div className="chip-arc" role="group" aria-label="Demo files to drop">
+      <div
+        className={`chip-arc${chipsReachedApex ? " chips-reached-apex" : ""}`}
+        role="group"
+        aria-label="Demo files to drop"
+      >
         <svg className="chip-arc-arrow" viewBox="0 0 1100 637" preserveAspectRatio="none" aria-hidden="true">
-          <path className="chip-arc-arrow-line" d={arrowLinePath()} />
+          <defs>
+            <mask
+              id="chip-arc-arrow-reveal"
+              x="0"
+              y="0"
+              width="1100"
+              height="637"
+              maskUnits="userSpaceOnUse"
+            >
+              <path
+                className="chip-arc-arrow-reveal"
+                d={arrowLinePath()}
+                pathLength={1}
+              />
+            </mask>
+          </defs>
+          <path
+            className="chip-arc-arrow-line"
+            d={arrowLinePath()}
+            mask="url(#chip-arc-arrow-reveal)"
+          />
           <path className="chip-arc-arrow-head" d={arrowHeadPath()} />
         </svg>
         {KINDS.map((k) => renderChip(k, true))}

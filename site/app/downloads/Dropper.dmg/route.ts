@@ -47,7 +47,7 @@ async function fullResponse(request: Request, bucket: R2Bucket): Promise<Respons
 }
 
 export async function GET(request: Request): Promise<Response> {
-  const bucket = getCloudflareContext().env.SHARE_BUCKET
+  const bucket = getCloudflareContext().env.DOWNLOAD_BUCKET
   const rangeHeader = request.headers.get("Range")
 
   try {
@@ -99,7 +99,7 @@ export async function GET(request: Request): Promise<Response> {
 }
 
 export async function HEAD(request: Request): Promise<Response> {
-  const bucket = getCloudflareContext().env.SHARE_BUCKET
+  const bucket = getCloudflareContext().env.DOWNLOAD_BUCKET
   try {
     const object = await bucket.head(INSTALLER_KEY)
     if (object === null) return errorResponse(null, 404)

@@ -22,10 +22,10 @@
   "kv_namespaces": [
     { "binding": "SUBSCRIBERS", "id": "7a1b6015972640119cca821312bf488a" }
   ],
-  // Public share pages are read through /share/*; uploads still use R2's
-  // authenticated S3 endpoint directly from the native app.
+  // The site only reads the fixed installer object. Public shares are handled
+  // by the separate dropper-share Worker in ../workers.
   "r2_buckets": [
-    { "binding": "SHARE_BUCKET", "bucket_name": "dropper-page" }
+    { "binding": "DOWNLOAD_BUCKET", "bucket_name": "dropper-page" }
   ],
   "observability": {
     "enabled": true

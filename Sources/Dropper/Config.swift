@@ -8,6 +8,6 @@ enum Config {
     static let keyPrefix = "share"
 
     /// The configured `share` prefix makes public links land under /share/*;
-    /// the site Worker reads that same namespaced key from the R2 bucket.
+    /// Cloudflare routes that namespace separately from the website.
     static let publicBase = "https://dropper.page"
 }

@@ -38,13 +38,17 @@ func renderShareHTML(title: String, items: [ManifestItem]) -> String {
             // Intrinsic sizing from the manifest: the layout is final before
             // any video metadata loads, so the page never reflows.
             var containerStyle = ""
-            var videoAttrs = ""
+            // New shares carry a full-resolution poster. Older manifest-era
+            // shares can still use the small per-file thumbnail whenever
+            // their static page is next regenerated.
+            let poster = item.poster ?? ".thumb.\(item.file).jpg"
+            var videoAttrs = " poster=\"\(escapeHTML(poster))\""
             if let w = item.width, let h = item.height {
                 let ratio = String(format: "%.4f", Double(w) / Double(h))
                 // Allow up to 2x natural width so small clips still present
                 // large; the page ceiling and viewport height cap both hold.
                 containerStyle = " style=\"max-width:min(1400px, \(w * 2)px, calc(80vh * \(ratio)))\""
-                videoAttrs = " width=\"\(w)\" height=\"\(h)\" style=\"aspect-ratio:\(w)/\(h)\""
+                videoAttrs += " width=\"\(w)\" height=\"\(h)\" style=\"aspect-ratio:\(w)/\(h)\""
             }
             media = """
             <div class="vplayer"\(containerStyle)>
@@ -128,7 +132,12 @@ func renderShareHTML(title: String, items: [ManifestItem]) -> String {
       body {
         display: flex; flex-direction: column; align-items: center; justify-content: center;
         gap: 28px; background: #14151a; color: #d7d9e0;
-        font: 14px/1.4 -apple-system, system-ui, sans-serif; padding: 32px; box-sizing: border-box;
+        font: 14px/1.4 -apple-system, system-ui, sans-serif;
+        padding: 96px clamp(24px, 8vw, 128px) 32px; box-sizing: border-box;
+      }
+      .share-content {
+        display: flex; flex-direction: column; align-items: center;
+        gap: 84px; width: 100%;
       }
       figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 10px;
                width: 100%; max-width: 1600px; }
@@ -229,6 +238,15 @@ func renderShareHTML(title: String, items: [ManifestItem]) -> String {
         border-radius: 999px; transition: background 0.15s;
       }
       a.dl:hover { background: #a5b3fb; }
+      .dropper-credit {
+        margin-top: 8px; color: rgba(215,217,224,0.48);
+        font-size: 12px; text-align: center;
+      }
+      .dropper-credit a {
+        color: inherit; font-weight: 600; text-decoration: none;
+        transition: color 0.15s;
+      }
+      .dropper-credit a:hover { color: #a5b3fb; }
       /* mobile-only close button: a small glass circle, top-right */
       .closer {
         display: none;
@@ -253,7 +271,10 @@ func renderShareHTML(title: String, items: [ManifestItem]) -> String {
     <button class="closer" aria-label="Close">
     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3l10 10M13 3 3 13"/></svg>
     </button>
+    <main class="share-content">
     \(blocks)
+    </main>
+    <footer class="dropper-credit">Shared beautifully with <a href="https://dropper.page" target="_blank" rel="noopener">Dropper</a></footer>
     <script>
     (() => {
       // One thing plays at a time, across custom players and native elements.

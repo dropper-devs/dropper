@@ -22,7 +22,39 @@ struct PopoverActions {
 /// persistent dropdown (size drift, off-screen spawns), so the dropdown is a
 /// floating panel positioned and clamped by hand.
 private final class DropdownPanel: NSPanel {
+    var onFileDragCount: (Int) -> Void = { _ in }
+    var onFileDragEnded: () -> Void = {}
+
     override var canBecomeKey: Bool { true }
+
+    private func fileCount(in sender: NSDraggingInfo) -> Int {
+        let urls = sender.draggingPasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        return urls.count
+    }
+
+    // NSWindow's drag-destination hooks are imported as informal protocol
+    // methods, so these intentionally do not use `override`. Registered
+    // SwiftUI row/strip views remain the concrete destinations; the panel is
+    // the non-consuming fallback over the rest of the window.
+    func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        onFileDragCount(fileCount(in: sender))
+        return []
+    }
+
+    func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        onFileDragCount(fileCount(in: sender))
+        return []
+    }
+
+    func draggingExited(_ sender: NSDraggingInfo?) {
+        onFileDragCount(0)
+    }
+
+    func draggingEnded(_ sender: NSDraggingInfo) {
+        onFileDragEnded()
+    }
 }
 
 /// Pure screen geometry for the menu-bar dropdown. Keeping this separate from
@@ -100,6 +132,7 @@ final class StatusItemController: NSObject {
         panel.isReleasedWhenClosed = false
         panel.becomesKeyOnlyIfNeeded = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.registerForDraggedTypes([.fileURL])
         return panel
     }()
     /// This host must survive folder navigation. Replacing a visible panel's
@@ -112,6 +145,8 @@ final class StatusItemController: NSObject {
     private var openedByDrag = false
     private var activeDropTargets = ActiveDropTargets()
     private var pendingDragClose: DispatchWorkItem?
+    private let panelDropTargetID = "popover-window"
+    private let iconDropTargetID = "status-icon"
 
     var hasCredentials: Bool { client != nil }
 
@@ -143,9 +178,19 @@ final class StatusItemController: NSObject {
             overlay.onDrop = { [weak self] urls in self?.handleDrop(urls: urls) }
             overlay.onClick = { [weak self] in self?.toggleList() }
             overlay.onRightClick = { [weak self] in self?.showContextMenu() }
-            overlay.onDragEntered = { [weak self] in self?.dragEnteredIcon() }
+            overlay.onDragEntered = { [weak self] count in
+                self?.dragEnteredIcon(fileCount: count)
+            }
             overlay.onDragExited = { [weak self] in self?.dragExitedIcon() }
+            overlay.onDragEnded = { [weak self] in self?.endFileDragPreview() }
             button.addSubview(overlay)
+        }
+
+        panel.onFileDragCount = { [weak self] count in
+            self?.setPanelFileDragCount(count)
+        }
+        panel.onFileDragEnded = { [weak self] in
+            self?.endFileDragPreview()
         }
 
         rebuildClient()
@@ -246,6 +291,7 @@ final class StatusItemController: NSObject {
         pendingDragClose?.cancel()
         pendingDragClose = nil
         activeDropTargets.removeAll()
+        state.clearDraggedFiles()
         // Reset transient UI unless an upload is mid-flight.
         if !uploads.busy {
             state.strip = .idle
@@ -299,9 +345,11 @@ final class StatusItemController: NSObject {
 
     /// A drag hovering the icon opens the dropdown so the file can continue
     /// down into the strip.
-    private func dragEnteredIcon() {
+    private func dragEnteredIcon(fileCount: Int) {
         pendingDragClose?.cancel()
         pendingDragClose = nil
+        state.setDraggedFileCount(fileCount, for: iconDropTargetID)
+        setDropTarget(iconDropTargetID, active: fileCount > 0)
         if !panel.isVisible {
             openedByDrag = true
             openList()
@@ -312,6 +360,20 @@ final class StatusItemController: NSObject {
     /// close it again once the drag moves away (the strip cancels this while
     /// it's the drop target).
     private func dragExitedIcon() {
+        state.setDraggedFileCount(0, for: iconDropTargetID)
+        setDropTarget(iconDropTargetID, active: false)
+    }
+
+    private func setPanelFileDragCount(_ count: Int) {
+        state.setDraggedFileCount(count, for: panelDropTargetID)
+        setDropTarget(panelDropTargetID, active: count > 0)
+    }
+
+    /// AppKit sends draggingEnded even when another nested destination wins
+    /// or the drag is cancelled, so no stale split preview can remain.
+    private func endFileDragPreview() {
+        state.clearDraggedFiles()
+        activeDropTargets.removeAll()
         scheduleDragClose()
     }
 
@@ -345,6 +407,7 @@ final class StatusItemController: NSObject {
         pendingDragClose?.cancel()
         pendingDragClose = nil
         activeDropTargets.removeAll()
+        state.clearDraggedFiles()
     }
 
     // MARK: - Upload
@@ -541,8 +604,9 @@ final class StatusDropView: NSView {
     var onDrop: ([URL]) -> Void = { _ in }
     var onClick: () -> Void = {}
     var onRightClick: () -> Void = {}
-    var onDragEntered: () -> Void = {}
+    var onDragEntered: (Int) -> Void = { _ in }
     var onDragExited: () -> Void = {}
+    var onDragEnded: () -> Void = {}
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -552,12 +616,19 @@ final class StatusDropView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        onDragEntered()
+        let urls = sender.draggingPasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        onDragEntered(urls.count)
         return .copy
     }
 
     override func draggingExited(_ sender: NSDraggingInfo?) {
         onDragExited()
+    }
+
+    override func draggingEnded(_ sender: NSDraggingInfo) {
+        onDragEnded()
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {

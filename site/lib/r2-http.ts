@@ -1,6 +1,6 @@
 /**
  * HTTP conditional-request and Range mechanics shared by the R2-streaming
- * routes (`/share/*` and `/downloads/Dropper.dmg`). Everything here is pure
+ * installer route (`/downloads/Dropper.dmg`). Everything here is pure
  * header parsing against an `R2Object` — response policy (content types,
  * caching, error bodies) stays in each route.
  */

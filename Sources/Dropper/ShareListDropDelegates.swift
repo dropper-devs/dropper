@@ -6,7 +6,10 @@ extension UTType {
     /// Internal-only payload for moving files within an existing collection.
     /// Finder file drags also advertise plain text, so plainText cannot safely
     /// distinguish reordering from the external file-attachment destination.
-    static let dropperShareRow = UTType(exportedAs: "page.dropper.share-row")
+    static let dropperShareRow = UTType(
+        exportedAs: "page.dropper.share-row",
+        conformingTo: .data
+    )
 }
 
 /// What the dragged rows look like while in flight.
@@ -82,6 +85,7 @@ struct ReorderDropDelegate: DropDelegate {
 struct ShareFileDropDelegate: DropDelegate {
     let enabled: Bool
     let setTargeted: (Bool) -> Void
+    let updateCount: (Int) -> Void
     let perform: ([NSItemProvider]) -> Bool
 
     func validateDrop(info: DropInfo) -> Bool {
@@ -90,26 +94,60 @@ struct ShareFileDropDelegate: DropDelegate {
 
     func dropEntered(info: DropInfo) {
         guard validateDrop(info: info) else { return }
+        updateCount(info.itemProviders(for: [.fileURL]).count)
         setTargeted(true)
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
         guard validateDrop(info: info) else { return DropProposal(operation: .cancel) }
+        updateCount(info.itemProviders(for: [.fileURL]).count)
         setTargeted(true)
         return DropProposal(operation: .copy)
     }
 
     func dropExited(info: DropInfo) {
+        updateCount(0)
         setTargeted(false)
     }
 
     func performDrop(info: DropInfo) -> Bool {
         guard validateDrop(info: info) else {
+            updateCount(0)
             setTargeted(false)
             return false
         }
         let providers = info.itemProviders(for: [.fileURL])
+        updateCount(0)
         setTargeted(false)
         return perform(providers)
+    }
+}
+
+/// Watches the complete SwiftUI popover surface so the upload strip can show
+/// its multi-file choice before the pointer reaches the strip itself. More
+/// specific row and strip destinations still perform the actual drops.
+struct PopoverFileDragObserver: DropDelegate {
+    let updateCount: (Int) -> Void
+
+    func validateDrop(info: DropInfo) -> Bool {
+        info.hasItemsConforming(to: [.fileURL])
+    }
+
+    func dropEntered(info: DropInfo) {
+        updateCount(info.itemProviders(for: [.fileURL]).count)
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        updateCount(info.itemProviders(for: [.fileURL]).count)
+        return DropProposal(operation: .copy)
+    }
+
+    func dropExited(info: DropInfo) {
+        updateCount(0)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        updateCount(0)
+        return false
     }
 }

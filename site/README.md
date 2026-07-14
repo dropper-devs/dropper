@@ -32,10 +32,10 @@ workerd, the same runtime as production Workers.
 
 ## Public share route
 
-The `SHARE_BUCKET` R2 binding exposes only the `dropper-page/share/` namespace
-at `https://dropper.page/share/*`. The native app uploads directly to R2's
-authenticated S3 endpoint; the Worker only handles public `GET` and `HEAD`
-requests and streams object bodies without buffering them.
+Public shares do not enter Next or OpenNext. The standalone native Worker in
+`../workers/share.ts` owns the more-specific `dropper.page/share/*` Cloudflare
+route and streams R2 bodies directly. The native app continues uploading to
+R2's authenticated S3 endpoint, and all existing branded URLs stay unchanged.
 
 The URL prefix is removed before lookup, so this object:
 
@@ -49,20 +49,26 @@ is available at:
 https://dropper.page/share/example-a1b2c3/index.html
 ```
 
-The separate `installers/` namespace stays unbrowsable, with one exception:
+The site's `DOWNLOAD_BUCKET` binding only exposes one fixed object from the
+separate `installers/` namespace:
 `GET /downloads/Dropper.dmg` streams the single fixed object
 `installers/Dropper_latest.dmg` — the key is hardcoded server-side, and the
 short cache lifetime means a new release propagates within minutes. The
-conditional-request and Range mechanics shared by both routes live in
-`lib/r2-http.ts`.
+conditional-request and Range mechanics live in `lib/r2-http.ts`.
 
 ## Deploying
 
-The site and public R2 share route are live on `dropper.page`. Deploy updates
-from this directory with:
+Deploy site updates from this directory with:
 
 ```bash
 npm run deploy
+```
+
+Deploy the independent share Worker from the repository root with:
+
+```bash
+cd site
+npx wrangler deploy --config ../workers/share.wrangler.jsonc
 ```
 
 For a first deployment in a new Cloudflare account:
