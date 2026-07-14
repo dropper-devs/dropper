@@ -38,7 +38,7 @@ struct R2ReadinessWaiter {
                 try await probe()
                 return
             } catch {
-                if Task.isCancelled || Self.isCancellation(error) {
+                if Task.isCancelled || error.isCancellation {
                     throw CancellationError()
                 }
                 guard Self.isRetryable(error), attempt < retryDelays.count else {
@@ -69,6 +69,8 @@ struct R2ReadinessWaiter {
 
         guard let r2Error = error as? R2Client.R2Error else { return false }
         switch r2Error {
+        case .invalidConfiguration, .invalidListResponse:
+            return false
         case let .badStatus(status, body):
             // This waiter is used immediately after bucket creation. Give a
             // just-created bucket a brief 404 propagation grace period; a
@@ -86,22 +88,8 @@ struct R2ReadinessWaiter {
         }
     }
 
-    static func isCancellation(_ error: Error) -> Bool {
-        error is CancellationError || urlErrorCode(in: error) == .cancelled
-    }
-
-    /// Foundation sometimes wraps its URL error in one or more NSErrors.
-    /// Walk that chain so a wrapped -1200 is still recognized.
+    /// Retained for tests; the URL-error chain walk now lives on `Error`.
     static func urlErrorCode(in error: Error) -> URLError.Code? {
-        var current: NSError? = error as NSError
-        var depth = 0
-        while let candidate = current, depth < 8 {
-            if candidate.domain == NSURLErrorDomain {
-                return URLError.Code(rawValue: candidate.code)
-            }
-            current = candidate.userInfo[NSUnderlyingErrorKey] as? NSError
-            depth += 1
-        }
-        return nil
+        error.urlErrorCode
     }
 }

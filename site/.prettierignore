@@ -1,0 +1,14 @@
+# build output & caches
+.next/
+.open-next/
+.wrangler/
+node_modules/
+
+# generated / vendored
+next-env.d.ts
+cloudflare-env.d.ts
+package-lock.json
+lib/demo-manifest.json
+
+# lockstep with the Swift app (out of scope for the site)
+../Sources/

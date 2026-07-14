@@ -13,8 +13,11 @@
   transform: translateX(-50%);
   width: 1100px;
   height: 780px;
-  background:
-    radial-gradient(closest-side, rgba(139, 156, 249, 0.16), transparent 70%);
+  background: radial-gradient(
+    closest-side,
+    rgba(var(--accent-rgb), 0.16),
+    transparent 70%
+  );
   pointer-events: none;
 }
 
@@ -36,21 +39,12 @@
     gap: 40px;
     align-items: start;
   }
-
-  .hero-demo {
-    justify-self: end;
-  }
 }
 
 @media (max-width: 640px) {
   .hero-grid {
     grid-template-columns: 1fr;
     gap: 56px;
-  }
-
-  /* outranks the later base `.hero-demo { justify-self: end }` */
-  .hero-grid .hero-demo {
-    justify-self: center;
   }
 }
 
@@ -84,6 +78,7 @@
 
 .product-shot {
   position: relative;
+  margin: 0;
 }
 
 .product-shot > img {

@@ -6,10 +6,6 @@ import AppKit
 struct OnboardingArt: View {
     let step: Int
 
-    static let indigo = Color(red: 0.545, green: 0.612, blue: 0.976)   // #8b9cf9
-    static let violet = Color(red: 0.478, green: 0.408, blue: 0.905)
-    static let coral = Color(red: 0.949, green: 0.647, blue: 0.647)
-
     /// Bundled step art, loaded once (onboarding-<step>.png in Resources).
     private static let images: [NSImage?] = (0..<4).map { step in
         Bundle.module.url(forResource: "onboarding-\(step)", withExtension: "png")
@@ -33,15 +29,14 @@ struct OnboardingArt: View {
     private var fallback: some View {
         ZStack {
             LinearGradient(
-                colors: [Color(red: 0.11, green: 0.115, blue: 0.15),
-                         Color(red: 0.078, green: 0.082, blue: 0.102)],
+                colors: [Brand.backdropTop, Brand.backdrop],
                 startPoint: .top, endPoint: .bottom)
 
             // Soft glows behind the geometry
-            Circle().fill(Self.indigo.opacity(0.32))
+            Circle().fill(Brand.indigo.opacity(0.32))
                 .frame(width: 150, height: 150).blur(radius: 46)
                 .offset(x: -90, y: -18)
-            Circle().fill(Self.violet.opacity(0.30))
+            Circle().fill(Brand.violet.opacity(0.30))
                 .frame(width: 180, height: 180).blur(radius: 55)
                 .offset(x: 110, y: 28)
 
@@ -67,7 +62,7 @@ struct OnboardingArt: View {
     private var welcomeArt: some View {
         ZStack {
             Circle()
-                .fill(LinearGradient(colors: [Self.indigo, Self.violet],
+                .fill(LinearGradient(colors: [Brand.indigo, Brand.violet],
                                      startPoint: .topLeading, endPoint: .bottomTrailing))
                 .frame(width: 110, height: 110)
                 .offset(x: -34, y: 4)
@@ -80,7 +75,7 @@ struct OnboardingArt: View {
                 .offset(x: 34, y: -8)
             orbitArc(radius: 84, trim: 0.30)
                 .offset(x: 0, y: 6)
-            Circle().fill(Self.coral)
+            Circle().fill(Brand.coral)
                 .frame(width: 12, height: 12)
                 .offset(x: 78, y: -46)
         }
@@ -90,16 +85,16 @@ struct OnboardingArt: View {
     private var accountArt: some View {
         ZStack {
             Circle()
-                .fill(LinearGradient(colors: [Self.violet, Self.indigo.opacity(0.6)],
+                .fill(LinearGradient(colors: [Brand.violet, Brand.indigo.opacity(0.6)],
                                      startPoint: .top, endPoint: .bottom))
                 .frame(width: 96, height: 96)
                 .offset(x: -26, y: 0)
             Circle()
-                .strokeBorder(Self.indigo, lineWidth: 2)
+                .strokeBorder(Brand.indigo, lineWidth: 2)
                 .frame(width: 96, height: 96)
                 .offset(x: 24, y: -6)
             orbitArc(radius: 92, trim: 0.42)
-            Circle().fill(Self.coral)
+            Circle().fill(Brand.coral)
                 .frame(width: 10, height: 10)
                 .offset(x: -88, y: 26)
         }
@@ -116,13 +111,13 @@ struct OnboardingArt: View {
                 ForEach(0..<3, id: \.self) { index in
                     RoundedRectangle(cornerRadius: 8)
                         .fill(LinearGradient(
-                            colors: [Self.indigo.opacity(1 - Double(index) * 0.28),
-                                     Self.violet.opacity(0.9 - Double(index) * 0.28)],
+                            colors: [Brand.indigo.opacity(1 - Double(index) * 0.28),
+                                     Brand.violet.opacity(0.9 - Double(index) * 0.28)],
                             startPoint: .leading, endPoint: .trailing))
                         .frame(width: 118 - CGFloat(index) * 14, height: 22)
                 }
             }
-            Circle().fill(Self.coral)
+            Circle().fill(Brand.coral)
                 .frame(width: 12, height: 12)
                 .offset(x: 70, y: -58)
         }
@@ -133,12 +128,12 @@ struct OnboardingArt: View {
         ZStack {
             Circle()
                 .trim(from: 0.08, to: 0.92)
-                .stroke(LinearGradient(colors: [Self.indigo, Self.violet],
+                .stroke(LinearGradient(colors: [Brand.indigo, Brand.violet],
                                        startPoint: .topLeading, endPoint: .bottomTrailing),
                         style: StrokeStyle(lineWidth: 10, lineCap: .round))
                 .frame(width: 104, height: 104)
                 .rotationEffect(.degrees(58))
-            Circle().fill(Self.coral)
+            Circle().fill(Brand.coral)
                 .frame(width: 16, height: 16)
                 .offset(x: 44, y: 44)
             Rectangle()
@@ -167,11 +162,11 @@ struct OnboardingArt: View {
         ZStack {
             Circle().fill(Color.white.opacity(0.30)).frame(width: 4, height: 4)
                 .offset(x: -150, y: -48)
-            Circle().fill(Self.indigo.opacity(0.8)).frame(width: 6, height: 6)
+            Circle().fill(Brand.indigo.opacity(0.8)).frame(width: 6, height: 6)
                 .offset(x: -170, y: 30)
             Circle().fill(Color.white.opacity(0.22)).frame(width: 4, height: 4)
                 .offset(x: 156, y: -52)
-            Circle().fill(Self.violet.opacity(0.8)).frame(width: 5, height: 5)
+            Circle().fill(Brand.violet.opacity(0.8)).frame(width: 5, height: 5)
                 .offset(x: 176, y: 44)
         }
     }

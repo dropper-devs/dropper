@@ -24,9 +24,21 @@
   z-index: 0;
   inset: -18%;
   background:
-    radial-gradient(circle at 78% 20%, rgba(98, 120, 222, 0.2), transparent 28%),
-    radial-gradient(circle at 18% 74%, rgba(139, 156, 249, 0.12), transparent 25%),
-    radial-gradient(ellipse 42% 30% at 52% 48%, rgba(61, 78, 148, 0.09), transparent 74%);
+    radial-gradient(
+      circle at 78% 20%,
+      rgba(98, 120, 222, 0.2),
+      transparent 28%
+    ),
+    radial-gradient(
+      circle at 18% 74%,
+      rgba(var(--accent-rgb), 0.12),
+      transparent 25%
+    ),
+    radial-gradient(
+      ellipse 42% 30% at 52% 48%,
+      rgba(61, 78, 148, 0.09),
+      transparent 74%
+    );
   transform: translate3d(var(--nebula-x), var(--nebula-y), 0) scale(1.08);
   transform-origin: center;
   will-change: transform;
@@ -45,19 +57,22 @@
 
 .space-layer-slow {
   opacity: 0.78;
-  transform: translate3d(var(--slow-x), var(--slow-y), 0) rotate(var(--slow-r)) scale(1.04);
+  transform: translate3d(var(--slow-x), var(--slow-y), 0) rotate(var(--slow-r))
+    scale(1.04);
 }
 
 .space-layer-mid {
   z-index: 2;
   opacity: 0.84;
-  transform: translate3d(var(--mid-x), var(--mid-y), 0) rotate(var(--mid-r)) scale(1.06);
+  transform: translate3d(var(--mid-x), var(--mid-y), 0) rotate(var(--mid-r))
+    scale(1.06);
 }
 
 .space-layer-fast {
   z-index: 3;
   opacity: 0.94;
-  transform: translate3d(var(--fast-x), var(--fast-y), 0) rotate(var(--fast-r)) scale(1.08);
+  transform: translate3d(var(--fast-x), var(--fast-y), 0) rotate(var(--fast-r))
+    scale(1.08);
 }
 
 .space-orb {
@@ -84,9 +99,15 @@
   stroke: rgba(168, 182, 253, 0.44);
 }
 
-.space-star { fill: rgba(181, 192, 255, 0.48); }
-.space-star.faint { fill: rgba(181, 192, 255, 0.22); }
-.space-star.bright { fill: rgba(215, 222, 255, 0.66); }
+.space-star {
+  fill: rgba(181, 192, 255, 0.48);
+}
+.space-star.faint {
+  fill: rgba(181, 192, 255, 0.22);
+}
+.space-star.bright {
+  fill: rgba(215, 222, 255, 0.66);
+}
 
 .space-sparkle {
   fill: none;

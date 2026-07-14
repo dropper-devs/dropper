@@ -40,12 +40,6 @@ enum VideoConverter {
                                 progress: progress)
     }
 
-    /// The video track's codec as a FourCC string ("avc1", "hvc1", …) — used
-    /// by the --convert-video debug CLI.
-    static func codecName(of url: URL) async -> String? {
-        await videoCodec(of: url).map(fourCC)
-    }
-
     /// Display dimensions (rotation applied), stored in the manifest so the
     /// share page can lay the player out before any metadata loads.
     static func dimensions(of url: URL) async -> (width: Int, height: Int)? {

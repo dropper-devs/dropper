@@ -162,7 +162,7 @@ final class R2ReadinessTests: XCTestCase {
                 accessKeyId: "token-id", secretAccessKey: "derived-secret"),
             config: config)
 
-        let request = client.readinessRequest()
+        let request = try client.readinessRequest()
         let url = try XCTUnwrap(request.url)
         let query = try XCTUnwrap(
             URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)

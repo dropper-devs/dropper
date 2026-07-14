@@ -2,7 +2,30 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 
-export default function ParallaxController({ children }: { children: ReactNode }) {
+/**
+ * The depth layers of the background field. Each maps to a set of
+ * `--<name>-{x,y,r}` custom properties consumed by space.css. Coefficients:
+ *   x: [progress, wave]         → drift along the page + a bounded sway
+ *   y: [progress, counterWave]  → drift along the page + a bounded bob
+ *   r: rotation-per-progress    → optional slow tilt (omit for no rotation)
+ */
+const LAYERS: {
+  name: string;
+  x: [number, number];
+  y: [number, number];
+  r?: number;
+}[] = [
+  { name: "slow", x: [48, 12], y: [-80, 10], r: -1.5 },
+  { name: "mid", x: [-70, -18], y: [145, 24], r: 2.2 },
+  { name: "fast", x: [120, 32], y: [-220, 42], r: -2.8 },
+  { name: "nebula", x: [-80, -38], y: [140, 36] },
+];
+
+export default function ParallaxController({
+  children,
+}: {
+  children: ReactNode;
+}) {
   const fieldRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -36,38 +59,18 @@ export default function ParallaxController({ children }: { children: ReactNode }
       const wave = Math.sin(renderedScroll / 720);
       const counterWave = Math.cos(renderedScroll / 980) - 1;
       const layoutStrength = mobileLayout.matches ? 0.68 : 1;
-      const strength = layoutStrength;
-      const rotationStrength = layoutStrength;
 
-      const slowX = (48 * progress + 12 * wave) * strength;
-      const slowY = (-80 * progress + 10 * counterWave) * strength;
-      const midX = (-70 * progress - 18 * wave) * strength;
-      const midY = (145 * progress + 24 * counterWave) * strength;
-      const fastX = (120 * progress + 32 * wave) * strength;
-      const fastY = (-220 * progress + 42 * counterWave) * strength;
-      const nebulaX = (-80 * progress - 38 * wave) * strength;
-      const nebulaY = (140 * progress + 36 * counterWave) * strength;
-
-      field.style.setProperty("--slow-x", `${slowX.toFixed(2)}px`);
-      field.style.setProperty("--slow-y", `${slowY.toFixed(2)}px`);
-      field.style.setProperty(
-        "--slow-r",
-        `${(-1.5 * progress * rotationStrength).toFixed(3)}deg`,
-      );
-      field.style.setProperty("--mid-x", `${midX.toFixed(2)}px`);
-      field.style.setProperty("--mid-y", `${midY.toFixed(2)}px`);
-      field.style.setProperty(
-        "--mid-r",
-        `${(2.2 * progress * rotationStrength).toFixed(3)}deg`,
-      );
-      field.style.setProperty("--fast-x", `${fastX.toFixed(2)}px`);
-      field.style.setProperty("--fast-y", `${fastY.toFixed(2)}px`);
-      field.style.setProperty(
-        "--fast-r",
-        `${(-2.8 * progress * rotationStrength).toFixed(3)}deg`,
-      );
-      field.style.setProperty("--nebula-x", `${nebulaX.toFixed(2)}px`);
-      field.style.setProperty("--nebula-y", `${nebulaY.toFixed(2)}px`);
+      for (const layer of LAYERS) {
+        const x = (layer.x[0] * progress + layer.x[1] * wave) * layoutStrength;
+        const y =
+          (layer.y[0] * progress + layer.y[1] * counterWave) * layoutStrength;
+        field.style.setProperty(`--${layer.name}-x`, `${x.toFixed(2)}px`);
+        field.style.setProperty(`--${layer.name}-y`, `${y.toFixed(2)}px`);
+        if (layer.r !== undefined) {
+          const r = layer.r * progress * layoutStrength;
+          field.style.setProperty(`--${layer.name}-r`, `${r.toFixed(3)}deg`);
+        }
+      }
 
       if (Math.abs(targetScroll - renderedScroll) > 0.1) {
         frame = requestAnimationFrame(render);

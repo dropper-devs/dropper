@@ -10,7 +10,9 @@ export default function Analytics() {
     (async () => {
       try {
         const response = await fetch("/api/analytics/config");
-        const data = (await response.json()) as { mixpanelToken?: string | null };
+        const data = (await response.json()) as {
+          mixpanelToken?: string | null;
+        };
         if (!cancelled && data.mixpanelToken) {
           const initialized = await initAnalytics(data.mixpanelToken);
           if (!cancelled && initialized) analytics.trackPageView();

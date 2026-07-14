@@ -26,7 +26,6 @@ struct PopoverRootView: View {
             // display whose visible height is less than the preferred 585 pt.
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .focusEffectDisabled()  // no focus ring on dropdown controls
         .background(VisualEffectBackground(material: .hudWindow).ignoresSafeArea())
         // The panel is borderless; the view supplies its own chrome — a
         // rounded panel with a beak pointing at the menu bar icon.
@@ -112,6 +111,20 @@ struct DropStrip: View {
 
     private let dropTargetID = "bottom-upload-strip"
 
+    private static let cardHeight: CGFloat = 95
+
+    /// The dashed drop-target outline shared by the single and split zones.
+    private func dashedCard(active: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 8)
+            .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [5]))
+            .foregroundStyle(active ? Color.accentColor : .secondary.opacity(0.5))
+    }
+
+    /// The solid card fill shared by the progress and links panels.
+    private var filledCard: some View {
+        RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.08))
+    }
+
     var body: some View {
         Group {
             switch state.strip {
@@ -175,7 +188,7 @@ struct DropStrip: View {
                           icon: "square.on.square",
                           active: separateSide)
             }
-            .frame(height: 95)
+            .frame(height: Self.cardHeight)
         } else {
             uploadTarget
         }
@@ -190,11 +203,7 @@ struct DropStrip: View {
         }
         .foregroundStyle(active ? Color.accentColor : .secondary)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [5]))
-                .foregroundStyle(active ? Color.accentColor : .secondary.opacity(0.5))
-        )
+        .background(dashedCard(active: active))
     }
 
     private var uploadTarget: some View {
@@ -205,12 +214,8 @@ struct DropStrip: View {
         }
         .foregroundStyle(targeted ? Color.accentColor : .secondary)
         .frame(maxWidth: .infinity)
-        .frame(height: 95)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [5]))
-                .foregroundStyle(targeted ? Color.accentColor : .secondary.opacity(0.5))
-        )
+        .frame(height: Self.cardHeight)
+        .background(dashedCard(active: targeted))
     }
 
     /// One delegate handles hover (count + side tracking) and the drop
@@ -305,11 +310,8 @@ struct DropStrip: View {
         }
         .padding(.horizontal, 8)
         .frame(maxWidth: .infinity)
-        .frame(height: 95)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.secondary.opacity(0.08))
-        )
+        .frame(height: Self.cardHeight)
+        .background(filledCard)
     }
 
     private func links(name: String, pageURLs: [String], fileURLs: [String]) -> some View {
@@ -341,10 +343,7 @@ struct DropStrip: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.secondary.opacity(0.08))
-        )
+        .background(filledCard)
         // File drops while links show are handled by linksContainer.
     }
 
@@ -405,8 +404,7 @@ private struct StripDropDelegate: DropDelegate {
 func loadFileURLs(from providers: [NSItemProvider], into handler: @escaping ([URL]) -> Void) {
     guard !providers.isEmpty else { return }
     let group = DispatchGroup()
-    let lock = NSLock()
-    var results = [URL?](repeating: nil, count: providers.count)
+    let results = LoadedFileURLs(count: providers.count)
 
     for (index, provider) in providers.enumerated() {
         group.enter()
@@ -417,15 +415,37 @@ func loadFileURLs(from providers: [NSItemProvider], into handler: @escaping ([UR
             } else if let u = item as? URL {
                 url = u
             }
-            lock.lock()
-            results[index] = url
-            lock.unlock()
+            results.set(url, at: index)
             group.leave()
         }
     }
 
     group.notify(queue: .main) {
-        let urls = results.compactMap { $0 }
+        let urls = results.values()
         if !urls.isEmpty { handler(urls) }
+    }
+}
+
+/// NSItemProvider invokes its callbacks on arbitrary queues. Keeping the
+/// mutable slots inside one locked Sendable box makes both ordering and the
+/// concurrency boundary explicit.
+private final class LoadedFileURLs: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [URL?]
+
+    init(count: Int) {
+        storage = [URL?](repeating: nil, count: count)
+    }
+
+    func set(_ url: URL?, at index: Int) {
+        lock.lock()
+        storage[index] = url
+        lock.unlock()
+    }
+
+    func values() -> [URL] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage.compactMap { $0 }
     }
 }

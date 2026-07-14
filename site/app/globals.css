@@ -4,8 +4,8 @@
 --------------------------------------------------------------------------- */
 
 @import "./styles/tokens.css";
-@import "./styles/space.css";
 @import "./styles/base.css";
+@import "./styles/space.css";
 @import "./styles/layout.css";
 @import "./styles/nav.css";
 @import "./styles/buttons.css";

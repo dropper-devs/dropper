@@ -17,7 +17,10 @@ enum ImageConverter {
         let destURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".jpg")
         guard let dest = CGImageDestinationCreateWithURL(
-            destURL as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
+            destURL as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else {
+            try? FileManager.default.removeItem(at: destURL)
+            return nil
+        }
         let options = [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary
         // Copy the primary image with metadata (orientation) intact.
         CGImageDestinationAddImageFromSource(dest, source, 0, options)

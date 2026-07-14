@@ -10,17 +10,25 @@ final class VideoPosterSupportTests: XCTestCase {
             poster: poster)
     }
 
-    func testLegacyManifestWithoutPosterStillDecodes() throws {
-        let json = #"{"version":1,"items":[{"file":"demo.mp4","name":"Demo.mp4","kind":"video","size":42,"width":1920,"height":1080}],"thumb":null}"#
+    func testManifestWithoutHighResolutionPosterDecodes() throws {
+        let json = #"{"version":2,"items":[{"file":"demo.mp4","name":"Demo.mp4","kind":"video","size":42,"width":1920,"height":1080}]}"#
         let manifest = try JSONDecoder().decode(Manifest.self, from: Data(json.utf8))
 
-        XCTAssertEqual(manifest.version, 1)
+        XCTAssertEqual(manifest.version, Manifest.currentVersion)
         XCTAssertNil(manifest.items.first?.poster)
+    }
+
+    func testManifestVersionIsNotForcedOrRejected() throws {
+        let json = #"{"version":1,"items":[]}"#
+
+        let manifest = try JSONDecoder().decode(
+            Manifest.self, from: Data(json.utf8))
+        XCTAssertEqual(manifest.version, 1)
     }
 
     func testPosterSurvivesManifestRoundTrip() throws {
         let manifest = Manifest(
-            items: [videoItem(poster: ".poster.demo.mp4.jpg")], thumb: nil)
+            items: [videoItem(poster: ".poster.demo.mp4.jpg")])
         let decoded = try JSONDecoder().decode(
             Manifest.self, from: JSONEncoder().encode(manifest))
 
@@ -38,7 +46,7 @@ final class VideoPosterSupportTests: XCTestCase {
         XCTAssertTrue(html.contains("aspect-ratio:1920/1080"))
     }
 
-    func testRepublishedLegacyShareFallsBackToExistingThumbnail() {
+    func testShareWithoutHighResolutionPosterUsesPerFileThumbnailFallback() {
         let html = renderShareHTML(title: "Demo", items: [videoItem()])
 
         XCTAssertTrue(html.contains(#"poster=".thumb.demo.mp4.jpg""#))
@@ -71,15 +79,13 @@ final class VideoPosterSupportTests: XCTestCase {
             publicBase: "https://example.com")
         let keys = ShareKeys(id: "demo-123", config: config)
         let manifest = Manifest(
-            items: [videoItem(poster: keys.posterName("demo.mp4"))],
-            thumb: nil)
+            items: [videoItem(poster: keys.posterName("demo.mp4"))])
 
         XCTAssertEqual(keys.posterName("demo.mp4"), ".poster.demo.mp4.jpg")
         XCTAssertEqual(keys.poster("demo.mp4"),
                        "share/demo-123/.poster.demo.mp4.jpg")
-        XCTAssertTrue(ShareStore.ownedKeys(
-            keys: keys, manifest: manifest, hasPage: true,
-            listedChildKeys: []).contains(keys.poster("demo.mp4")))
+        XCTAssertTrue(ShareCatalog.ownedKeys(
+            keys: keys, manifest: manifest).contains(keys.poster("demo.mp4")))
     }
 
     func testPosterTransferLimitsRemainBounded() {

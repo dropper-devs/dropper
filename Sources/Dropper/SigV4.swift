@@ -53,7 +53,7 @@ enum SigV4 {
         key = hmac(key, Data(region.utf8))
         key = hmac(key, Data(service.utf8))
         key = hmac(key, Data("aws4_request".utf8))
-        let signature = hmac(key, Data(stringToSign.utf8)).map { String(format: "%02x", $0) }.joined()
+        let signature = hmac(key, Data(stringToSign.utf8)).hexEncoded
 
         let auth = "AWS4-HMAC-SHA256 Credential=\(credentials.accessKeyId)/\(scope), "
             + "SignedHeaders=\(signedHeaders), Signature=\(signature)"
@@ -108,7 +108,7 @@ enum SigV4 {
     }
 
     private static func hexSHA256(_ text: String) -> String {
-        SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
+        SHA256.hash(data: Data(text.utf8)).hexEncoded
     }
 
     private static func hmac(_ key: Data, _ data: Data) -> Data {

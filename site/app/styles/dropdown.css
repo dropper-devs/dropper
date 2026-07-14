@@ -7,7 +7,9 @@
   border-radius: 12px;
   overflow: hidden;
   box-shadow: var(--shadow-panel);
-  background: url("/wallpaper-1600.webp") center / cover no-repeat, #101116;
+  background:
+    url("/wallpaper-1600.webp") center / cover no-repeat,
+    #101116;
 }
 
 .mock-menubar {
@@ -36,7 +38,7 @@
   width: 26px;
   height: 24px;
   border-radius: 5px;
-  background: rgba(139, 156, 249, 0.22);
+  background: rgba(var(--accent-rgb), 0.22);
 }
 
 .mock-menubar .mb-app svg {
@@ -97,10 +99,9 @@
 }
 
 .mock-strip {
-  border: 1.5px dashed rgba(255, 255, 255, 0.04);
+  border: var(--drop-dash) rgba(255, 255, 255, 0.04);
   border-radius: var(--radius-sm);
   height: 100%;
-  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -109,10 +110,38 @@
      transition on a fresh element can flash through transient colors */
 }
 
-.mock-strip.active {
+/* collections split target — the two-zone drop UI (PopoverViews.swift,
+   linksContainer). Lives here with the rest of the dropdown/mockup chrome. */
+.mock-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.mock-split .zone {
+  border: var(--drop-dash) var(--hairline-strong);
+  border-radius: var(--radius-sm);
+  padding: 16px 10px;
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  text-align: center;
+}
+
+.mock-split .zone svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* shared drag-over treatment for every dashed drop zone. Byte-identical
+   across the dropdown strip and the collection split zones. */
+.mock-strip.is-active,
+.mock-split .zone.is-active {
   border-color: var(--accent);
   color: var(--accent);
-  background: rgba(139, 156, 249, 0.06);
+  background: rgba(var(--accent-rgb), 0.06);
 }
 
 .mock-links {
@@ -120,7 +149,6 @@
   border-radius: var(--radius-sm);
   padding: 12px;
   height: 100%;
-  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -146,7 +174,10 @@
   text-decoration: none;
   cursor: pointer;
   text-align: left;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
 }
 
 .mock-link-btn:hover {
@@ -154,7 +185,7 @@
 }
 
 .mock-link-btn.copied {
-  border-color: rgba(139, 156, 249, 0.55);
+  border-color: rgba(var(--accent-rgb), 0.55);
   color: var(--accent-bright);
 }
 
@@ -186,7 +217,6 @@
 
 .mock-pathbar {
   gap: 6px;
-  padding: 0 14px;
   height: 27px;
   flex: none;
   border-top: 1px solid var(--hairline);
@@ -247,7 +277,7 @@
 }
 
 .mock-lrow.hl {
-  background: rgba(139, 156, 249, 0.16);
+  background: rgba(var(--accent-rgb), 0.16);
 }
 
 .mock-lrow.enter {
@@ -280,7 +310,6 @@
   width: 15px;
   height: 15px;
 }
-
 
 .thumb30 {
   width: 30px;
@@ -321,11 +350,86 @@
 
 .mock-strip-area {
   height: 180px; /* fixed footprint shared by idle/uploading/links states */
-  box-sizing: border-box;
   flex: none;
   padding: 8px 10px;
+  position: relative;
   /* softer than --hairline: this seam should barely register */
   border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+/* Final beat of the hero entrance: once the chips land and the arrow has
+   finished drawing, echo the chips' accent halo around the drop target.
+   A stable wrapper pseudo-element keeps this a one-shot animation even
+   though the strip's contents remount as the demo changes state. */
+@media (min-width: 1180px) {
+  .mock-strip-area.intro-glow::before {
+    content: "";
+    position: absolute;
+    inset: 8px 10px;
+    border-radius: var(--radius-sm);
+    background: linear-gradient(
+      110deg,
+      transparent 38%,
+      rgba(205, 214, 255, 0.04) 43%,
+      rgba(255, 255, 255, 0.2) 50%,
+      rgba(167, 181, 255, 0.08) 56%,
+      transparent 62%
+    );
+    background-size: 250% 100%;
+    background-position: 150% 0;
+    opacity: 0;
+    pointer-events: none;
+    will-change: background-position, opacity;
+    animation: dropZoneIntroSheen var(--demo-intro-sheen-duration)
+      cubic-bezier(0.22, 0.61, 0.36, 1) var(--chip-arrow-duration) both;
+  }
+
+  .mock-strip-area.intro-glow::after {
+    content: "";
+    position: absolute;
+    inset: 8px 10px;
+    box-sizing: border-box;
+    border: var(--drop-dash) rgba(165, 179, 251, 0.9);
+    border-radius: var(--radius-sm);
+    background: rgba(var(--accent-rgb), 0.06);
+    box-shadow: 0 0 24px rgba(var(--accent-rgb), 0.3);
+    opacity: 0;
+    pointer-events: none;
+    animation: dropZoneIntroGlow var(--demo-intro-flash-duration) ease-in-out
+      var(--chip-arrow-duration) both;
+  }
+}
+
+@keyframes dropZoneIntroSheen {
+  0% {
+    background-position: 150% 0;
+    opacity: 0;
+  }
+  14% {
+    opacity: 0;
+  }
+  28% {
+    opacity: 1;
+  }
+  82% {
+    opacity: 0.85;
+  }
+  100% {
+    background-position: -50% 0;
+    opacity: 0;
+  }
+}
+
+@keyframes dropZoneIntroGlow {
+  0% {
+    opacity: 0;
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
 }
 
 .mock-footer {
@@ -342,7 +446,6 @@
   gap: 12px;
   padding: 0 10px;
   height: 100%;
-  box-sizing: border-box;
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.05);
 }
@@ -467,7 +570,7 @@
 
 .confirm-pair .mock-tbtn.ok,
 .confirm-pair .mock-tbtn.ok:hover {
-  color: #33c759;
+  color: var(--confirm);
 }
 
 .confirm-pair .mock-tbtn.no,
@@ -513,12 +616,7 @@ button.ric {
   cursor: pointer;
 }
 
-button.ric:hover {
-  color: var(--text-dim);
-}
-
-.mock-lrow .select-control,
-.mock-lrow .select-control.on {
+.mock-lrow .select-control {
   color: var(--text);
 }
 

@@ -1,4 +1,3 @@
-# Local-only secrets for `opennextjs-cloudflare preview` — real values
-# live as Cloudflare Worker secrets (wrangler secret put <NAME>).
+# The Mixpanel project token is browser-visible by design. Set a local value
+# for preview here; production uses `wrangler secret put MIXPANEL_TOKEN`.
 MIXPANEL_TOKEN=
-MIXPANEL_SECRET=

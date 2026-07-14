@@ -5,10 +5,14 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/config.sh"
 
 [[ -f "${DMG_PATH}" ]] || die "Missing DMG. Run make dmg first."
 
-# Wrangler 4.110 requires Node 22+. This machine's Homebrew Node satisfies it
-# without changing the shell's global/asdf Node selection.
-if [[ -x /opt/homebrew/opt/node/bin/node ]]; then
-    export PATH="/opt/homebrew/opt/node/bin:${PATH}"
+# Release tooling is standardized on the repository's pinned Node 26 runtime.
+command -v node >/dev/null 2>&1 \
+    || die "Node.js 26.x is required. Run 'asdf install' from ${PROJECT_ROOT}."
+NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null)" \
+    || die "Could not determine the Node.js version."
+if [[ "${NODE_MAJOR}" != "26" ]]; then
+    NODE_VERSION="$(node --version 2>/dev/null || printf 'unknown')"
+    die "Node.js 26.x is required; found ${NODE_VERSION}. Run 'asdf install' from ${PROJECT_ROOT}."
 fi
 
 WRANGLER="${PROJECT_ROOT}/site/node_modules/.bin/wrangler"

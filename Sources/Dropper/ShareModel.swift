@@ -22,10 +22,10 @@ enum MediaKind: String, Codable {
 /// is display order; it's what makes leaf deletes and reordering able to
 /// regenerate the page.
 struct Manifest: Codable, Equatable {
-    var version = 2
+    static let currentVersion = 2
+
+    var version = Manifest.currentVersion
     var items: [ManifestItem]
-    /// Which item's file the legacy share-level .thumb.jpg depicts.
-    var thumb: String?
 
     /// The share's display title, derived from its first item.
     var title: String {
@@ -48,7 +48,7 @@ struct ManifestItem: Codable, Equatable {
 /// One prepared file of a drop: possibly a converted temp copy of the source.
 struct UploadFile {
     let sourceURL: URL
-    let fileName: String
+    var fileName: String
     let displayName: String
     let kind: MediaKind
     let contentType: String
@@ -60,31 +60,47 @@ struct UploadFile {
 
 /// ID and filename hygiene for share folders.
 enum ShareNaming {
-    private static let alphabet = Array("abcdefghijklmnopqrstuvwxyz0123456789")
-
     /// Share folder name: first file's stem (readable in bucket browsers)
-    /// plus 6 random characters (the unguessable part that keeps links
-    /// private on a public bucket): "mixdown-final-v3-x8d2k1".
+    /// plus 128 bits of system-generated randomness. The suffix makes links
+    /// impractical to discover accidentally and avoids collisions, but these
+    /// are unlisted public links — not private or access-controlled content.
     static func shareID(firstFile fileName: String) -> String {
-        let stem = (fileName as NSString).deletingPathExtension
+        let safeName = sanitize(fileName)
+        let stem = (safeName as NSString).deletingPathExtension
         let capped = String(stem.prefix(24))
             .trimmingCharacters(in: CharacterSet(charactersIn: "-."))
-        let suffix = String((0..<6).map { _ in alphabet.randomElement()! })
+        let suffix = randomHex(byteCount: 16)
         return capped.isEmpty ? suffix : "\(capped)-\(suffix)"
     }
 
     /// Keep object keys and URLs clean: ASCII letters/digits/dot/dash only.
+    /// Both the stem and extension are sanitized; an extension is input, not
+    /// a trusted MIME label, and may contain any character legal in a filename.
     static func sanitize(_ name: String) -> String {
-        let ext = (name as NSString).pathExtension.lowercased()
-        let stem = (name as NSString).deletingPathExtension
-        var clean = stem.lowercased().map { ch -> Character in
-            ch.isLetter && ch.isASCII || ch.isNumber ? ch : "-"
+        let rawExtension = (name as NSString).pathExtension
+        let rawStem = (name as NSString).deletingPathExtension
+        var stem = sanitizePart(rawStem)
+        let ext = sanitizePart(rawExtension)
+        if stem.isEmpty { stem = "file" }
+        return ext.isEmpty ? stem : "\(stem).\(ext)"
+    }
+
+    private static func sanitizePart(_ value: String) -> String {
+        value.lowercased().map { ch -> Character in
+            ch.isASCII && (ch.isLetter || ch.isNumber) ? ch : "-"
         }.reduce(into: "") { acc, ch in
             if ch == "-" && acc.hasSuffix("-") { return }
             acc.append(ch)
         }.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
-        if clean.isEmpty { clean = "file" }
-        return ext.isEmpty ? clean : "\(clean).\(ext)"
+    }
+
+    /// Lowercase hex from the system CSPRNG. Also used for the share page's
+    /// CSP nonce, so ID suffixes and nonces share one audited generator.
+    static func randomHex(byteCount: Int) -> String {
+        var generator = SystemRandomNumberGenerator()
+        return (0..<byteCount)
+            .map { _ in UInt8.random(in: .min ... .max, using: &generator) }
+            .hexEncoded
     }
 
     /// Sanitize a batch, deduplicating collisions ("kick.wav", "kick-2.wav").
@@ -119,7 +135,6 @@ struct ShareKeys {
     var page: String { config.key("\(id)/index.html") }
     var archivedMarker: String { config.key("\(id)/.archived") }
     var pinnedMarker: String { config.key("\(id)/.pinned") }
-    var legacyThumb: String { config.key("\(id)/.thumb.jpg") }
     func media(_ fileName: String) -> String { config.key("\(id)/\(fileName)") }
     func thumb(_ fileName: String) -> String { config.key("\(id)/.thumb.\(fileName).jpg") }
     func posterName(_ fileName: String) -> String { ".poster.\(fileName).jpg" }

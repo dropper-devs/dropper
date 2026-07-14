@@ -6,23 +6,23 @@ import SwiftUI
 // confirms in place; area capture adds a drag-out, movable, resizable
 // selection rectangle. Each overlay has exactly one confirm action.
 
+/// Shared window/lifecycle plumbing for the pick-a-target overlays: each
+/// subclass only supplies its SwiftUI root view and its confirm handler.
 @MainActor
-final class DisplaySelectionOverlay {
-    struct Target: Identifiable {
-        let id: CGDirectDisplayID
-        let screen: NSScreen
-        let title: String
-        let subtitle: String
-        let captureTitle: String
+class SelectionOverlayPresenter {
+    fileprivate var windows: [SelectionOverlayWindow] = []
+    fileprivate var onCancel: (() -> Void)?
+
+    func dismiss() {
+        dismissSelectionOverlayWindows(&windows, onCancel: &onCancel)
     }
 
-    private var windows: [SelectionOverlayWindow] = []
-    private var onCancel: (() -> Void)?
-
-    func show(
-        targets: [Target],
-        onSelect: @escaping (Target) -> Void,
-        onCancel: @escaping () -> Void
+    /// Puts up one overlay window per target and takes key focus. `rootView`
+    /// is invoked once per target to build that display's SwiftUI content.
+    fileprivate func present<Content: View>(
+        targets: [DisplaySelectionOverlay.Target],
+        onCancel: @escaping () -> Void,
+        rootView: (DisplaySelectionOverlay.Target) -> Content
     ) {
         dismiss()
 
@@ -31,15 +31,7 @@ final class DisplaySelectionOverlay {
             let window = makeSelectionOverlayWindow(
                 for: target,
                 cancelHandler: { [weak self] in self?.cancel() },
-                rootView: DisplaySelectionOverlayView(
-                    target: target,
-                    onCapture: { [weak self] in
-                        self?.select(target, onSelect: onSelect)
-                    },
-                    onCancel: { [weak self] in
-                        self?.cancel()
-                    }
-                )
+                rootView: rootView(target)
             )
 
             window.orderFrontRegardless()
@@ -50,16 +42,7 @@ final class DisplaySelectionOverlay {
         windows.last?.makeKey()
     }
 
-    func dismiss() {
-        dismissSelectionOverlayWindows(&windows, onCancel: &onCancel)
-    }
-
-    private func select(_ target: Target, onSelect: (Target) -> Void) {
-        dismiss()
-        onSelect(target)
-    }
-
-    private func cancel() {
+    fileprivate func cancel() {
         let cancel = onCancel
         dismiss()
         cancel?()
@@ -67,49 +50,63 @@ final class DisplaySelectionOverlay {
 }
 
 @MainActor
-final class AreaSelectionOverlay {
-    struct Selection {
-        let target: DisplaySelectionOverlay.Target
-        let sourceRect: CGRect
-        let captureFrame: CGRect
+final class DisplaySelectionOverlay: SelectionOverlayPresenter {
+    struct Target: Identifiable, Sendable {
+        let id: CGDirectDisplayID
+        let frame: CGRect
+        let scale: CGFloat
+        let title: String
+        let subtitle: String
+        let captureTitle: String
     }
 
-    private var windows: [SelectionOverlayWindow] = []
-    private var onCancel: (() -> Void)?
+    func show(
+        targets: [Target],
+        onSelect: @escaping (Target) -> Void,
+        onCancel: @escaping () -> Void
+    ) {
+        present(targets: targets, onCancel: onCancel) { target in
+            DisplaySelectionOverlayView(
+                target: target,
+                onCapture: { [weak self] in
+                    self?.select(target, onSelect: onSelect)
+                },
+                onCancel: { [weak self] in
+                    self?.cancel()
+                }
+            )
+        }
+    }
+
+    private func select(_ target: Target, onSelect: (Target) -> Void) {
+        dismiss()
+        onSelect(target)
+    }
+}
+
+@MainActor
+final class AreaSelectionOverlay: SelectionOverlayPresenter {
+    struct Selection: Sendable {
+        let target: DisplaySelectionOverlay.Target
+        let sourceRect: CGRect
+    }
 
     func show(
         targets: [DisplaySelectionOverlay.Target],
         onSelect: @escaping (Selection) -> Void,
         onCancel: @escaping () -> Void
     ) {
-        dismiss()
-
-        self.onCancel = onCancel
-        for target in targets {
-            let window = makeSelectionOverlayWindow(
-                for: target,
-                cancelHandler: { [weak self] in self?.cancel() },
-                rootView: AreaSelectionOverlayView(
-                    target: target,
-                    onCapture: { [weak self] rect in
-                        self?.select(rect, target: target, onSelect: onSelect)
-                    },
-                    onCancel: { [weak self] in
-                        self?.cancel()
-                    }
-                )
+        present(targets: targets, onCancel: onCancel) { target in
+            AreaSelectionOverlayView(
+                target: target,
+                onCapture: { [weak self] rect in
+                    self?.select(rect, target: target, onSelect: onSelect)
+                },
+                onCancel: { [weak self] in
+                    self?.cancel()
+                }
             )
-
-            window.orderFrontRegardless()
-            windows.append(window)
         }
-
-        NSApplication.shared.activate(ignoringOtherApps: true)
-        windows.last?.makeKey()
-    }
-
-    func dismiss() {
-        dismissSelectionOverlayWindows(&windows, onCancel: &onCancel)
     }
 
     private func select(
@@ -120,18 +117,10 @@ final class AreaSelectionOverlay {
         let rect = AreaSelectionGeometry.standardizedIntegral(localRect)
         let selection = Selection(
             target: target,
-            sourceRect: rect,
-            captureFrame: AreaSelectionGeometry.captureFrame(
-                forLocalRect: rect, screenFrame: target.screen.frame)
+            sourceRect: rect
         )
         dismiss()
         onSelect(selection)
-    }
-
-    private func cancel() {
-        let cancel = onCancel
-        dismiss()
-        cancel?()
     }
 }
 
@@ -156,13 +145,14 @@ private final class FirstMouseHostingView<Content: View>: NSHostingView<Content>
     }
 }
 
+@MainActor
 private func makeSelectionOverlayWindow<Content: View>(
     for target: DisplaySelectionOverlay.Target,
     cancelHandler: @escaping () -> Void,
     rootView: Content
 ) -> SelectionOverlayWindow {
     let window = SelectionOverlayWindow(
-        contentRect: target.screen.frame,
+        contentRect: target.frame,
         styleMask: .borderless,
         backing: .buffered,
         defer: false
@@ -181,10 +171,11 @@ private func makeSelectionOverlayWindow<Content: View>(
     hostingView.autoresizingMask = [.width, .height]
     window.contentView = hostingView
 
-    window.setFrame(target.screen.frame, display: true)
+    window.setFrame(target.frame, display: true)
     return window
 }
 
+@MainActor
 private func dismissSelectionOverlayWindows(
     _ windows: inout [SelectionOverlayWindow],
     onCancel: inout (() -> Void)?
@@ -266,7 +257,6 @@ private struct SelectionOverlayHeader: View {
                     }
             }
             .buttonStyle(.plain)
-            .focusable(false)
             .help("Cancel")
         }
         .padding(.horizontal, 32)
@@ -278,6 +268,12 @@ private struct SelectionOverlayConfirmButton: View {
     let systemImage: String
     let title: String
     let action: () -> Void
+
+    // Vertical purple gradient with a darker hairline border.
+    private static let gradientTop = Color(red: 0.66, green: 0.53, blue: 1.00)
+    private static let gradientMiddle = Color(red: 0.51, green: 0.36, blue: 0.95)
+    private static let gradientBottom = Color(red: 0.38, green: 0.25, blue: 0.78)
+    private static let border = Color(red: 0.22, green: 0.13, blue: 0.44)
 
     var body: some View {
         Button(action: action) {
@@ -297,21 +293,20 @@ private struct SelectionOverlayConfirmButton: View {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(LinearGradient(
                             colors: [
-                                Color(red: 0.66, green: 0.53, blue: 1.00),
-                                Color(red: 0.51, green: 0.36, blue: 0.95),
-                                Color(red: 0.38, green: 0.25, blue: 0.78),
+                                Self.gradientTop,
+                                Self.gradientMiddle,
+                                Self.gradientBottom,
                             ],
                             startPoint: .top,
                             endPoint: .bottom
                         ))
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(Color(red: 0.22, green: 0.13, blue: 0.44), lineWidth: 1)
+                        .strokeBorder(Self.border, lineWidth: 1)
                 }
                 .shadow(color: Color.black.opacity(0.50), radius: 2, x: 0, y: 1)
             }
         }
         .buttonStyle(.plain)
-        .focusable(false)
         .keyboardShortcut(.defaultAction)
     }
 }
@@ -330,7 +325,6 @@ private struct SelectionOverlayCancelLink: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .focusable(false)
         .help("Cancel")
     }
 }
@@ -406,6 +400,7 @@ enum AreaSelectionGeometry {
     static let minimumSelectionSize = CGSize(width: 96, height: 72)
     static let actionStackHeight: CGFloat = 66
     static let actionStackSelectionGap: CGFloat = 23
+    static let actionStackHorizontalMargin: CGFloat = 95
 
     static func standardizedIntegral(_ rect: CGRect) -> CGRect {
         rect.standardized.integral
@@ -423,16 +418,6 @@ enum AreaSelectionGeometry {
     static func dimensionText(for rect: CGRect, scale: CGFloat) -> String {
         let size = pixelSize(for: rect, scale: scale)
         return "\(Int(size.width)) × \(Int(size.height))"
-    }
-
-    static func captureFrame(forLocalRect localRect: CGRect, screenFrame: CGRect) -> CGRect {
-        let rect = standardizedIntegral(localRect)
-        return CGRect(
-            x: screenFrame.minX + rect.minX,
-            y: screenFrame.maxY - rect.maxY,
-            width: rect.width,
-            height: rect.height
-        )
     }
 
     static func rect(from first: CGPoint, to second: CGPoint) -> CGRect {
@@ -465,11 +450,15 @@ enum AreaSelectionGeometry {
         return CGRect(origin: CGPoint(x: x, y: y), size: rect.size)
     }
 
+    /// Drags one handle by `translation`, clamping to `size` and enforcing a
+    /// per-axis floor of `minimumSize`. Only axes the handle actually adjusts
+    /// are floored, so an edge drag never disturbs the perpendicular extent.
     static func resized(
         _ rect: CGRect,
         handle: AreaResizeHandle,
         by translation: CGSize,
-        in size: CGSize
+        in size: CGSize,
+        minimumSize: CGSize = minimumSelectionSize
     ) -> CGRect {
         var minX = rect.minX
         var maxX = rect.maxX
@@ -494,19 +483,19 @@ enum AreaSelectionGeometry {
         minY = min(max(0, minY), size.height)
         maxY = min(max(0, maxY), size.height)
 
-        if maxX - minX < minimumSelectionSize.width {
+        if (handle.adjustsLeft || handle.adjustsRight), maxX - minX < minimumSize.width {
             if handle.adjustsLeft {
-                minX = max(0, maxX - minimumSelectionSize.width)
+                minX = max(0, maxX - minimumSize.width)
             } else {
-                maxX = min(size.width, minX + minimumSelectionSize.width)
+                maxX = min(size.width, minX + minimumSize.width)
             }
         }
 
-        if maxY - minY < minimumSelectionSize.height {
+        if (handle.adjustsTop || handle.adjustsBottom), maxY - minY < minimumSize.height {
             if handle.adjustsTop {
-                minY = max(0, maxY - minimumSelectionSize.height)
+                minY = max(0, maxY - minimumSize.height)
             } else {
-                maxY = min(size.height, minY + minimumSelectionSize.height)
+                maxY = min(size.height, minY + minimumSize.height)
             }
         }
 
@@ -525,7 +514,8 @@ enum AreaSelectionGeometry {
             ? preferredY
             : max(halfHeight + 12, fallbackY)
         return CGPoint(
-            x: min(max(rect.midX, 95), size.width - 95),
+            x: min(max(rect.midX, actionStackHorizontalMargin),
+                   size.width - actionStackHorizontalMargin),
             y: y
         )
     }
@@ -611,7 +601,7 @@ private struct AreaSelectionOverlayView: View {
             }
 
             Text(AreaSelectionGeometry.dimensionText(
-                for: rect, scale: target.screen.backingScaleFactor
+                for: rect, scale: target.scale
             ))
             .font(.system(size: 12, weight: .semibold, design: .monospaced))
             .foregroundStyle(.white)

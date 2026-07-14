@@ -37,7 +37,7 @@ export default function SharePageMockup() {
       </div>
       <div className="mock-page">
         <div className="mock-share-file">
-          <div className="mock-player">
+          <div className="mock-player card">
             <span className="mock-play">
               <PlayIcon />
             </span>
@@ -45,7 +45,9 @@ export default function SharePageMockup() {
               {PEAKS.map((p, i) => (
                 <i
                   key={i}
-                  className={(i + 0.5) / PEAKS.length <= PLAYED_FRACTION ? "played" : ""}
+                  className={
+                    (i + 0.5) / PEAKS.length <= PLAYED_FRACTION ? "played" : ""
+                  }
                   style={{ height: `${p}%` }}
                 />
               ))}
@@ -74,7 +76,7 @@ export default function SharePageMockup() {
         </div>
 
         <div className="mock-share-file">
-          <div className="mock-md">
+          <div className="mock-md card">
             <div className="h"># Release notes — v0.9</div>
             <div className="line" />
             <div className="line short" />
@@ -86,8 +88,13 @@ export default function SharePageMockup() {
         </div>
 
         <div className="mock-share-file">
-          <div className="mock-dl-card">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+          <div className="mock-dl-card card">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+            >
               <path d="M6 2h9l5 5v15H6z" strokeLinejoin="round" />
               <path d="M15 2v5h5" strokeLinejoin="round" />
               <path d="M10 4v2M10 8v2M10 12v2M10 16v2" />

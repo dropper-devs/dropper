@@ -10,8 +10,8 @@ One-page marketing site for [Dropper](../) — Next.js (App Router) deployed to
 - `@opennextjs/cloudflare` 1.x + `wrangler` 4.x
 - No CSS framework — hand-rolled design system in `app/globals.css` using the
   app's own palette (`#07101f` background, `#8b9cf9` accent)
-- Node 26 for tooling (`export PATH=/opt/homebrew/opt/node/bin:$PATH` on this
-  machine — the system Node 20 is too old)
+- Node 26 for tooling, pinned in the repository root `.tool-versions` (run
+  `asdf install` from the repository root)
 
 ## Commands
 
@@ -19,6 +19,8 @@ One-page marketing site for [Dropper](../) — Next.js (App Router) deployed to
 npm install
 npm run dev        # Next dev server (fast iteration)  → http://localhost:3000
 npm run build      # plain `next build`
+npm run typecheck  # strict TypeScript + unused-symbol checks
+npm run check      # typecheck + production Next build
 npm run preview    # OpenNext build + local Workers runtime (workerd) preview
 npm run deploy     # OpenNext build + production Worker deployment
 npm run upload     # OpenNext build + upload a new Worker version (no deploy)
@@ -71,46 +73,17 @@ cd site
 npx wrangler deploy --config ../workers/share.wrangler.jsonc
 ```
 
-For a first deployment in a new Cloudflare account:
+The checked-in `wrangler.jsonc` targets Dropper's production custom domains.
+Maintainer deployments only require
+authentication (`npx wrangler login` or `CLOUDFLARE_API_TOKEN`) followed by
+`npm run deploy`.
+
+For a fork or first deployment in a different Cloudflare account:
 
 1. `npx wrangler login` (or set `CLOUDFLARE_API_TOKEN`).
-2. Set up the KV binding (below) if you want the email form to store anything.
+2. Replace or remove the production entries under `routes` in `wrangler.jsonc`.
 3. `npm run deploy` — deploys the Worker named `dropper-site` per
-   `wrangler.jsonc`. Add a custom domain in the Cloudflare dashboard (Workers
-   → dropper-site → Domains & Routes) or via `routes` in `wrangler.jsonc`.
-
-## Email capture / KV setup
-
-`POST /api/subscribe` validates the address (plus a `website` honeypot field —
-bots that fill it get a fake success) and writes
-`subscriber:<email> → {"email", "subscribedAt"}` into a KV namespace bound as
-`SUBSCRIBERS`.
-
-Without the binding the route returns a clear **503** and the form shows an
-error — nothing crashes, so local dev works out of the box.
-
-To enable storage:
-
-```sh
-npx wrangler kv namespace create SUBSCRIBERS
-```
-
-then uncomment the `kv_namespaces` block in `wrangler.jsonc` and paste the id
-it prints:
-
-```jsonc
-"kv_namespaces": [
-  { "binding": "SUBSCRIBERS", "id": "<namespace-id>" }
-]
-```
-
-`npm run preview` (and `next dev`, via `initOpenNextCloudflareForDev()`) will
-then use a **local simulated** KV; the deployed Worker uses the real one.
-List collected addresses with:
-
-```sh
-npx wrangler kv key list --binding SUBSCRIBERS --remote
-```
+   `wrangler.jsonc`.
 
 ## Hero demo
 
@@ -138,13 +111,13 @@ an immutable cache.
 
 ## Placeholders to swap before launch
 
-| What | Where |
-| --- | --- |
-| Download URL (DMG) | Wired up: `DOWNLOAD_URL` in `lib/site.ts` → `/downloads/Dropper.dmg` (see above) |
-| Production origin (canonical/OG URLs) | `SITE_URL` in `lib/site.ts` |
-| Demo media | Share URLs in `components/demo/data.ts` + names/sizes in `lib/demo-manifest.json` |
-| Hero wallpaper | Replace `public/wallpaper.jpg`, run `npm run wallpaper` |
-| Real screenshots | Pass `src="/shots/…"` to any `<ProductShot>` in `app/page.tsx` — the HTML/CSS mockup is the automatic fallback |
+| What                                  | Where                                                                                                                                                                       |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Download URL (DMG)                    | Wired up: `DOWNLOAD_URL` in `lib/site.ts` → `/downloads/Dropper.dmg` (see above)                                                                                            |
+| Production origin (canonical/OG URLs) | `SITE_URL` in `lib/site.ts`                                                                                                                                                 |
+| Demo media                            | Share URLs in `components/demo/data.ts` + names/sizes in `lib/demo-manifest.json`                                                                                           |
+| Hero wallpaper                        | Replace `public/wallpaper.jpg`, run `npm run wallpaper`                                                                                                                     |
+| Real screenshots                      | Pass `src="/shots/…"` to a `<ProductShot>` in `components/sections/SharePages.tsx`, `Screenshots.tsx`, or `Collections.tsx` — the HTML/CSS mockup is the automatic fallback |
 
 ## Hero wallpaper
 

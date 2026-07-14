@@ -1,8 +1,60 @@
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  overflow-x: clip;
+}
+
+/* Respect reduced-motion: anchor jumps become instant instead of eased. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.78' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.09'/%3E%3C/svg%3E"),
+    radial-gradient(
+      ellipse 68% 46% at 47% 17%,
+      rgba(61, 78, 148, 0.3),
+      transparent 69%
+    ),
+    radial-gradient(
+      ellipse 44% 48% at 72% 59%,
+      rgba(30, 50, 101, 0.2),
+      transparent 76%
+    ),
+    linear-gradient(180deg, #080d1c 0%, #07101f 55%, #050b18 100%);
+  background-blend-mode: soft-light, normal, normal, normal;
+  background-size:
+    180px 180px,
+    auto,
+    auto,
+    auto;
+  background-attachment: fixed;
+  color: var(--text);
+  font: 16px/1.6 var(--font);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+main,
+footer {
+  position: relative;
+  z-index: 1;
+}
+
 a {
   color: var(--accent);
   text-decoration: none;
 }
 
 ::selection {
-  background: rgba(139, 156, 249, 0.32);
+  background: rgba(var(--accent-rgb), 0.32);
 }

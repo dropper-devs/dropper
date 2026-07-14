@@ -3,7 +3,7 @@ import Foundation
 
 /// A successful 31-day R2 page-view query. Every requested page key is
 /// present in `countsByPageKey`, including pages with zero requests.
-struct R2PageViewSnapshot: Equatable {
+struct R2PageViewSnapshot: Equatable, Sendable {
     let countsByPageKey: [String: Int64]
     let interval: DateInterval
     let fetchedAt: Date
@@ -16,7 +16,7 @@ struct R2PageViewSnapshot: Equatable {
 /// Errors are intentionally classified for the settings experience: only a
 /// definite authorization failure should invite somebody to add an Analytics
 /// token. Network, rate-limit, and Cloudflare service failures should retry.
-enum R2ViewCountError: LocalizedError, Equatable {
+enum R2ViewCountError: LocalizedError, Equatable, Sendable {
     case permissionDenied
     case authenticationFailed
     case transient(String)
@@ -40,8 +40,8 @@ enum R2ViewCountError: LocalizedError, Equatable {
 /// Queries Cloudflare's native R2 operations dataset. It counts successful
 /// GetObject operations grouped by object name, then retains only the requested
 /// Dropper `index.html` keys. The supplied token is never retained or logged.
-struct R2ViewCountAPI {
-    typealias Transport = (URLRequest) async throws -> (Data, HTTPURLResponse)
+struct R2ViewCountAPI: Sendable {
+    typealias Transport = @Sendable (URLRequest) async throws -> (Data, HTTPURLResponse)
 
     private static let endpoint = URL(string: "https://api.cloudflare.com/client/v4/graphql")!
     private static let retention: TimeInterval = 31 * 24 * 60 * 60
@@ -426,16 +426,21 @@ final class ShareViewCountState: ObservableObject {
         token: String,
         now: Date = Date()
     ) async -> AccessState {
+        generation += 1
+        let requestGeneration = generation
         isLoading = true
         do {
             try await api.checkAccess(
                 accountID: accountID, bucketName: bucketName,
                 token: token, now: now)
+            guard requestGeneration == generation else { return accessState }
             lastError = nil
             accessState = .available
         } catch is CancellationError {
+            guard requestGeneration == generation else { return accessState }
             // Cancellation is not evidence that permissions are unavailable.
         } catch let error as R2ViewCountError {
+            guard requestGeneration == generation else { return accessState }
             lastError = error
             switch error {
             case .permissionDenied: accessState = .permissionRequired
@@ -444,10 +449,13 @@ final class ShareViewCountState: ObservableObject {
                 accessState = .temporarilyUnavailable
             }
         } catch {
+            guard requestGeneration == generation else { return accessState }
             lastError = .transient(error.localizedDescription)
             accessState = .temporarilyUnavailable
         }
-        isLoading = false
+        if requestGeneration == generation {
+            isLoading = false
+        }
         return accessState
     }
 }

@@ -9,8 +9,14 @@
   --bg: #07101f;
   --bg-elev: #1c1e27;
   --accent: #8b9cf9;
+  /* accent as raw channels, for rgba(var(--accent-rgb), α) tints */
+  --accent-rgb: 139, 156, 249;
   --accent-bright: #a5b3fb;
   --accent-ink: #14151a;
+  /* semantic status colors */
+  --success: #7ddb96;
+  --danger: #f38d8d;
+  --confirm: #33c759; /* the app's system-green confirm check */
   --text: #d7d9e0;
   --text-dim: rgba(215, 217, 224, 0.62);
   --text-faint: rgba(215, 217, 224, 0.38);
@@ -18,43 +24,15 @@
   --hairline-strong: rgba(255, 255, 255, 0.13);
   --radius: 14px;
   --radius-sm: 8px;
+  /* shared dashed drop-zone border spec (color supplied per element) */
+  --drop-dash: 1.5px dashed;
+  /* sticky-nav height + breathing room, for anchor scroll-margin */
+  --nav-offset: 76px;
   --glass: rgba(28, 30, 39, 0.72);
-  --shadow-panel: 0 24px 70px rgba(0, 0, 0, 0.55), 0 4px 18px rgba(0, 0, 0, 0.35);
+  --shadow-panel:
+    0 24px 70px rgba(0, 0, 0, 0.55), 0 4px 18px rgba(0, 0, 0, 0.35);
   --font:
     -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI",
     Roboto, Helvetica, Arial, sans-serif;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-html {
-  scroll-behavior: smooth;
-  overflow-x: clip;
-}
-
-body {
-  margin: 0;
-  background-color: var(--bg);
-  background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.78' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.09'/%3E%3C/svg%3E"),
-    radial-gradient(ellipse 68% 46% at 47% 17%, rgba(61, 78, 148, 0.3), transparent 69%),
-    radial-gradient(ellipse 44% 48% at 72% 59%, rgba(30, 50, 101, 0.2), transparent 76%),
-    linear-gradient(180deg, #080d1c 0%, #07101f 55%, #050b18 100%);
-  background-blend-mode: soft-light, normal, normal, normal;
-  background-size: 180px 180px, auto, auto, auto;
-  background-attachment: fixed;
-  color: var(--text);
-  font: 16px/1.6 var(--font);
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-  overflow-x: hidden;
-}
-
-main,
-footer {
-  position: relative;
-  z-index: 1;
 }

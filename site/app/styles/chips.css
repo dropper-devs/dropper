@@ -1,6 +1,9 @@
 /* --------------------------- hero demo chips ----------------------------- */
 
 .hero-demo {
+  --chip-arrow-duration: 1.44s;
+  --demo-intro-flash-duration: 1.5s;
+  --demo-intro-sheen-duration: 550ms;
   display: flex;
   flex-direction: column;
   position: relative;
@@ -21,9 +24,11 @@
   .hero-grid > :first-child {
     transform: translateY(80px);
   }
+}
 
+@media (max-width: 640px) {
   .hero-demo {
-    transform: none;
+    justify-self: center;
   }
 }
 
@@ -43,12 +48,16 @@
   padding: 14px 18px 11px;
   min-width: 86px;
   background: rgba(255, 255, 255, 0.03);
-  border: 1.5px dashed var(--hairline-strong);
+  border: var(--drop-dash) var(--hairline-strong);
   border-radius: 12px;
   color: var(--text-dim);
   font: inherit;
   cursor: grab;
-  transition: border-color 0.15s, color 0.15s, transform 0.3s, opacity 0.3s,
+  transition:
+    border-color 0.15s,
+    color 0.15s,
+    transform 0.3s,
+    opacity 0.3s,
     background 0.15s;
   touch-action: manipulation;
   /* --float-y: scroll-spring offset (JS); translate first so the drift is
@@ -60,7 +69,7 @@
 .chip:focus-visible {
   border-color: var(--accent);
   color: var(--accent-bright);
-  background: rgba(139, 156, 249, 0.06);
+  background: rgba(var(--accent-rgb), 0.06);
 }
 
 .chip:active {
@@ -109,12 +118,14 @@
   color: var(--accent-bright);
   box-shadow:
     0 18px 38px rgba(0, 3, 14, 0.28),
-    0 0 24px rgba(139, 156, 249, 0.3);
+    0 0 24px rgba(var(--accent-rgb), 0.3);
 }
 
 .chip-arc .chip {
   position: absolute;
   z-index: 1;
+  /* keep in sync with ARC_CHIP in components/demo/geometry.ts, which centers
+     each chip on its point along the arrow using half of this size */
   width: 74px;
   height: 89px;
   min-width: 74px;
@@ -129,8 +140,12 @@
      layer without a CSS transform transition filtering or slowing it. */
   will-change: transform;
   backface-visibility: hidden;
-  transition: border-color 0.15s, color 0.15s, opacity 0.3s,
-    background 0.15s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    color 0.15s,
+    opacity 0.3s,
+    background 0.15s,
+    box-shadow 0.15s;
 }
 
 .chip-arc-arrow {
@@ -178,7 +193,8 @@
 /* The React spring adds this class at the chips' first upper apex, just as
    they reverse direction to settle. Adding it starts each animation once. */
 .chip-arc.chips-reached-apex .chip-arc-arrow-reveal {
-  animation: chipArcArrowReveal 1.44s cubic-bezier(0.22, 0.72, 0.2, 1) forwards;
+  animation: chipArcArrowReveal var(--chip-arrow-duration)
+    cubic-bezier(0.22, 0.72, 0.2, 1) forwards;
 }
 
 .chip-arc.chips-reached-apex .chip-arc-arrow-line {
@@ -186,16 +202,23 @@
 }
 
 .chip-arc.chips-reached-apex .chip-arc-arrow-head {
-  animation: chipArcArrowHeadReveal 1.44s ease-out forwards;
+  animation: chipArcArrowHeadReveal var(--chip-arrow-duration) ease-out forwards;
 }
 
 @keyframes chipArcArrowReveal {
-  to { stroke-dashoffset: 0; }
+  to {
+    stroke-dashoffset: 0;
+  }
 }
 
 @keyframes chipArcArrowHeadReveal {
-  0%, 82% { opacity: 0; }
-  100% { opacity: 1; }
+  0%,
+  82% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
 }
 
 @media (min-width: 1180px) {
@@ -211,10 +234,22 @@
 /* periodic "you can drag me" nudge — a quick, small shake that rides on
    top of the chip's resting tilt */
 @keyframes chipWiggle {
-  0%, 100% { transform: translate3d(0, var(--float-y, 0px), 0) rotate(var(--rot, 0deg)); }
-  20% { transform: translate3d(0, calc(var(--float-y, 0px) - 3px), 0) rotate(calc(var(--rot, 0deg) + 4deg)); }
-  45% { transform: translate3d(0, calc(var(--float-y, 0px) - 1px), 0) rotate(calc(var(--rot, 0deg) - 3.5deg)); }
-  70% { transform: translate3d(0, var(--float-y, 0px), 0) rotate(calc(var(--rot, 0deg) + 2deg)); }
+  0%,
+  100% {
+    transform: translate3d(0, var(--float-y, 0px), 0) rotate(var(--rot, 0deg));
+  }
+  20% {
+    transform: translate3d(0, calc(var(--float-y, 0px) - 3px), 0)
+      rotate(calc(var(--rot, 0deg) + 4deg));
+  }
+  45% {
+    transform: translate3d(0, calc(var(--float-y, 0px) - 1px), 0)
+      rotate(calc(var(--rot, 0deg) - 3.5deg));
+  }
+  70% {
+    transform: translate3d(0, var(--float-y, 0px), 0)
+      rotate(calc(var(--rot, 0deg) + 2deg));
+  }
 }
 
 .chip.wiggle {
@@ -268,35 +303,6 @@
   color: var(--text-faint);
   font-size: 12.5px;
   margin: 12px 0 0;
-}
-
-.mock-split {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.mock-split .zone {
-  border: 1.5px dashed var(--hairline-strong);
-  border-radius: var(--radius-sm);
-  padding: 16px 10px;
-  display: grid;
-  gap: 6px;
-  justify-items: center;
-  color: var(--text-dim);
-  font-size: 11.5px;
-  text-align: center;
-}
-
-.mock-split .zone.active {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: rgba(139, 156, 249, 0.06);
-}
-
-.mock-split .zone svg {
-  width: 18px;
-  height: 18px;
 }
 
 /* touch dragging: the chip follows the finger (Pointer Events; HTML5

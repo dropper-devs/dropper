@@ -31,9 +31,15 @@
   background: rgba(255, 255, 255, 0.14);
 }
 
-.mock-dots i:nth-child(1) { background: #ff5f57; }
-.mock-dots i:nth-child(2) { background: #febc2e; }
-.mock-dots i:nth-child(3) { background: #28c840; }
+.mock-dots i:nth-child(1) {
+  background: #ff5f57;
+}
+.mock-dots i:nth-child(2) {
+  background: #febc2e;
+}
+.mock-dots i:nth-child(3) {
+  background: #28c840;
+}
 
 .mock-urlbar {
   flex: 1;
@@ -89,9 +95,6 @@
   align-items: center;
   gap: 14px;
   width: 100%;
-  background: var(--bg-elev);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius);
   padding: 14px 18px;
 }
 
@@ -154,8 +157,16 @@
 .mock-video .screen {
   aspect-ratio: 16 / 7.2;
   background:
-    radial-gradient(120% 140% at 20% 0%, rgba(139, 156, 249, 0.25), transparent 55%),
-    radial-gradient(100% 120% at 85% 100%, rgba(139, 156, 249, 0.12), transparent 60%),
+    radial-gradient(
+      120% 140% at 20% 0%,
+      rgba(var(--accent-rgb), 0.25),
+      transparent 55%
+    ),
+    radial-gradient(
+      100% 120% at 85% 100%,
+      rgba(var(--accent-rgb), 0.12),
+      transparent 60%
+    ),
     #0b0c10;
   /* flex + margin:auto — centers the icon on every engine (grid
      place-items misplaced it on mobile Safari) */
@@ -191,8 +202,11 @@
   flex: 1;
   height: 4px;
   border-radius: 2px;
-  background:
-    linear-gradient(to right, var(--accent) 35%, rgba(255, 255, 255, 0.22) 35%);
+  background: linear-gradient(
+    to right,
+    var(--accent) 35%,
+    rgba(255, 255, 255, 0.22) 35%
+  );
   position: relative;
 }
 
@@ -214,9 +228,6 @@
   align-items: center;
   gap: 14px;
   width: 100%;
-  background: var(--bg-elev);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius);
   padding: 14px 16px;
 }
 
@@ -255,9 +266,6 @@
 /* markdown mock */
 .mock-md {
   width: 100%;
-  background: var(--bg-elev);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius);
   padding: 18px 20px;
   font-size: 12px;
   color: var(--text-dim);
@@ -277,8 +285,10 @@
   margin: 7px 0;
 }
 
-.mock-md .line.short { width: 62%; }
+.mock-md .line.short {
+  width: 62%;
+}
 .mock-md .line.code {
-  background: rgba(139, 156, 249, 0.16);
+  background: rgba(var(--accent-rgb), 0.16);
   width: 78%;
 }

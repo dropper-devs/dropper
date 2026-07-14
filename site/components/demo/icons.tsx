@@ -1,23 +1,15 @@
-import type React from "react"
-import type { Kind, RowID } from "./data"
+import type React from "react";
+import type { Kind, RowID } from "./data";
 
 /* ----------------------------- inline icons ------------------------------ */
 /* SF-symbol-style strokes matching the app's toolbar/rows. */
 
-const I = ({
-  d,
-  filled = false,
-  className,
-}: {
-  d: React.ReactNode
-  filled?: boolean
-  className?: string
-}) => (
+const I = ({ d, className }: { d: React.ReactNode; className?: string }) => (
   <svg
     className={className}
     viewBox="0 0 24 24"
-    fill={filled ? "currentColor" : "none"}
-    stroke={filled ? "none" : "currentColor"}
+    fill="none"
+    stroke="currentColor"
     strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
@@ -25,7 +17,7 @@ const I = ({
   >
     {d}
   </svg>
-)
+);
 
 export const icons = {
   square: <I d={<rect x="4" y="4" width="16" height="16" rx="3" />} />,
@@ -35,7 +27,7 @@ export const icons = {
       <path
         d="M8 12.4 11 15.4 16.5 9"
         fill="none"
-        stroke="#14151a"
+        style={{ stroke: "var(--accent-ink)" }}
         strokeWidth="2.4"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -45,7 +37,13 @@ export const icons = {
   minusSquareFill: (
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <rect x="3.5" y="3.5" width="17" height="17" rx="4" fill="currentColor" />
-      <path d="M8 12h8" fill="none" stroke="#14151a" strokeWidth="2.4" strokeLinecap="round" />
+      <path
+        d="M8 12h8"
+        fill="none"
+        style={{ stroke: "var(--accent-ink)" }}
+        strokeWidth="2.4"
+        strokeLinecap="round"
+      />
     </svg>
   ),
   trash: (
@@ -123,14 +121,6 @@ export const icons = {
       }
     />
   ),
-  xCircle: (
-    <I
-      filled
-      d={
-        <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm3.5 12.1-1.4 1.4L12 13.4l-2.1 2.1-1.4-1.4 2.1-2.1-2.1-2.1 1.4-1.4 2.1 2.1 2.1-2.1 1.4 1.4-2.1 2.1z" />
-      }
-    />
-  ),
   photo: (
     <I
       d={
@@ -194,7 +184,7 @@ export const icons = {
       }
     />
   ),
-}
+};
 
 export const kindIcon: Record<RowID, React.ReactNode> = {
   seed: icons.photo,
@@ -202,11 +192,11 @@ export const kindIcon: Record<RowID, React.ReactNode> = {
   movie: icons.film,
   audio: icons.waveform,
   markdown: icons.docText,
-}
+};
 
 export const chipLabel: Record<Kind, string> = {
   image: "IMAGE",
   audio: "AUDIO",
   movie: "MOVIE",
   markdown: "MD",
-}
+};

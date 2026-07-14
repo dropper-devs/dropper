@@ -81,7 +81,7 @@ struct ReorderDropDelegate: DropDelegate {
 }
 
 /// External files attach to the explicit parent share represented by the
-/// row. Internal child reordering continues through its plain-text target.
+/// row. Internal child reordering uses Dropper's private row type.
 struct ShareFileDropDelegate: DropDelegate {
     let enabled: Bool
     let setTargeted: (Bool) -> Void

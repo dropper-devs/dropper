@@ -8,6 +8,8 @@
 section {
   padding: 96px 0;
   position: relative;
+  /* clear the fixed nav when an anchor scrolls a section into view */
+  scroll-margin-top: var(--nav-offset);
 }
 
 .section-kicker {

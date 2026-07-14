@@ -1,4 +1,4 @@
-import Reveal from "@/components/Reveal"
+import Reveal from "@/components/Reveal";
 
 export default function Conversion() {
   return (
@@ -8,9 +8,9 @@ export default function Conversion() {
           <p className="section-kicker">Web-safe by default</p>
           <h2 className="section-title">Links that play everywhere</h2>
           <p className="section-lede">
-            Apple formats are great — until you send them to someone on
-            Chrome. Dropper converts as it uploads, so nobody ever writes
-            back “it won&apos;t open”.
+            Apple formats are great — until you send them to someone on Chrome.
+            Dropper converts as it uploads, so nobody ever writes back “it
+            won&apos;t open”.
           </p>
         </Reveal>
         <div className="convert-row">
@@ -37,13 +37,13 @@ export default function Conversion() {
           </Reveal>
         </div>
         <Reveal delay={200}>
-          <p className="fine-print" style={{ textAlign: "center" }}>
-            Lossless where possible — H.264 movies are remuxed, not
-            re-encoded, and AIFF→WAV is a bit-perfect repack. Every
-            conversion can be switched off.
+          <p className="fine-print convert-note">
+            Lossless where possible — H.264 movies are remuxed, not re-encoded,
+            and AIFF→WAV is a bit-perfect repack. Every conversion can be
+            switched off.
           </p>
         </Reveal>
       </div>
     </section>
-  )
+  );
 }

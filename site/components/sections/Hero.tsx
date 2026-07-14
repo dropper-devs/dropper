@@ -1,7 +1,7 @@
-import HeroDemo from "@/components/HeroDemo"
-import SmoothLink from "@/components/SmoothLink"
-import DownloadButton from "@/components/ui/DownloadButton"
-import { REQUIREMENTS } from "@/lib/site"
+import HeroDemo from "@/components/hero/HeroDemo";
+import SmoothLink from "@/components/SmoothLink";
+import DownloadButton from "@/components/ui/DownloadButton";
+import { REQUIREMENTS } from "@/lib/site";
 
 export default function Hero() {
   return (
@@ -16,10 +16,10 @@ export default function Hero() {
             <span className="accent">Share it beautifully.</span>
           </h1>
           <p className="hero-sub">
-            Dropper lives in your Mac&apos;s menu bar. Drag anything onto
-            it and it uploads straight to <strong>your own</strong>{" "}
-            Cloudflare R2 bucket — a beautiful share page lands on your
-            clipboard in seconds. No middleman. No subscription.
+            Dropper lives in your Mac&apos;s menu bar. Drag anything onto it and
+            it uploads straight to <strong>your own</strong> Cloudflare R2
+            bucket — a beautiful share page lands on your clipboard in seconds.
+            No middleman. No subscription.
           </p>
           <div className="hero-ctas">
             <DownloadButton />
@@ -36,5 +36,5 @@ export default function Hero() {
         <HeroDemo />
       </div>
     </section>
-  )
+  );
 }

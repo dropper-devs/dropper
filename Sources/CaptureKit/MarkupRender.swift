@@ -72,8 +72,10 @@ public enum MarkupRender {
         let backwards = CGVector(dx: -tangent.dx / tangentLength,
                                  dy: -tangent.dy / tangentLength)
         let side = CGVector(dx: -backwards.dy, dy: backwards.dx)
-        let headLength = min(max(strokeWidth * 5, 12), max(1, length * 0.34))
-        let headWidth = headLength * 0.56
+        let headLengthFraction: CGFloat = 0.34  // head length vs. shaft length
+        let headWidthRatio: CGFloat = 0.56      // barb spread vs. head length
+        let headLength = min(max(strokeWidth * 5, 12), max(1, length * headLengthFraction))
+        let headWidth = headLength * headWidthRatio
         let firstBarb = CGPoint(
             x: end.x + backwards.dx * headLength - side.dx * headWidth,
             y: end.y + backwards.dy * headLength - side.dy * headWidth
@@ -95,14 +97,19 @@ public enum MarkupRender {
             return
         }
 
-        let xWobble = rect.width * 0.012
-        let yWobble = rect.height * 0.014
+        // Fractional nudges that give the contour its hand-drawn asymmetry;
+        // the per-curve control multipliers below stay near 1 on purpose.
+        let wobbleXFraction: CGFloat = 0.012
+        let wobbleYFraction: CGFloat = 0.014
+        let handleFraction: CGFloat = 0.276  // Bézier handle length vs. axis
+        let xWobble = rect.width * wobbleXFraction
+        let yWobble = rect.height * wobbleYFraction
         let top = CGPoint(x: rect.midX + xWobble, y: rect.minY)
         let right = CGPoint(x: rect.maxX, y: rect.midY - yWobble)
         let bottom = CGPoint(x: rect.midX - xWobble * 0.8, y: rect.maxY)
         let left = CGPoint(x: rect.minX, y: rect.midY + yWobble * 0.7)
-        let hx = rect.width * 0.276
-        let hy = rect.height * 0.276
+        let hx = rect.width * handleFraction
+        let hy = rect.height * handleFraction
 
         path.move(to: top)
         path.addCurve(to: right,
@@ -130,9 +137,11 @@ public enum MarkupRender {
             return
         }
 
+        let cornerFraction: CGFloat = 0.075  // corner radius vs. short side
+        let bowFraction: CGFloat = 0.018     // edge bow depth vs. short side
         let shortSide = min(rect.width, rect.height)
-        let radius = min(shortSide * 0.075, max(strokeWidth * 1.6, 4))
-        let bow = min(shortSide * 0.018, max(strokeWidth * 0.45, 0.75))
+        let radius = min(shortSide * cornerFraction, max(strokeWidth * 1.6, 4))
+        let bow = min(shortSide * bowFraction, max(strokeWidth * 0.45, 0.75))
 
         path.move(to: CGPoint(x: rect.minX + radius, y: rect.minY))
         path.addQuadCurve(

@@ -1,16 +1,16 @@
-import ParallaxField from "@/components/ParallaxField"
-import Nav from "@/components/sections/Nav"
-import Hero from "@/components/sections/Hero"
-import HowItWorks from "@/components/sections/HowItWorks"
-import SharePages from "@/components/sections/SharePages"
-import Screenshots from "@/components/sections/Screenshots"
-import Collections from "@/components/sections/Collections"
-import Conversion from "@/components/sections/Conversion"
-import Organize from "@/components/sections/Organize"
-import Ownership from "@/components/sections/Ownership"
-import SetupWizard from "@/components/sections/SetupWizard"
-import GetDropper from "@/components/sections/GetDropper"
-import Footer from "@/components/sections/Footer"
+import ParallaxField from "@/components/ParallaxField";
+import Nav from "@/components/sections/Nav";
+import Hero from "@/components/sections/Hero";
+import HowItWorks from "@/components/sections/HowItWorks";
+import SharePages from "@/components/sections/SharePages";
+import Screenshots from "@/components/sections/Screenshots";
+import Collections from "@/components/sections/Collections";
+import Conversion from "@/components/sections/Conversion";
+import Organize from "@/components/sections/Organize";
+import Ownership from "@/components/sections/Ownership";
+import SetupWizard from "@/components/sections/SetupWizard";
+import GetDropper from "@/components/sections/GetDropper";
+import Footer from "@/components/sections/Footer";
 
 /* Displacement map for the glass lens: R encodes horizontal shift, G
    vertical; #808000 is "no shift". A blurred neutral rounded-rect sits over
@@ -32,7 +32,7 @@ const LENS_MAP =
       "<rect width='400' height='260' fill='url(#gy)' style='mix-blend-mode:screen'/>" +
       "<rect x='22' y='22' width='356' height='216' rx='44' fill='#808000' filter='url(#b)'/>" +
       "</svg>",
-  )
+  );
 
 export default function Home() {
   return (
@@ -44,7 +44,13 @@ export default function Home() {
       <svg style={{ display: "none" }} aria-hidden="true">
         <filter id="liquid-glass" x="-10%" y="-10%" width="120%" height="120%">
           <feImage href={LENS_MAP} preserveAspectRatio="none" result="map" />
-          <feDisplacementMap in="SourceGraphic" in2="map" scale="64" xChannelSelector="R" yChannelSelector="G" />
+          <feDisplacementMap
+            in="SourceGraphic"
+            in2="map"
+            scale="64"
+            xChannelSelector="R"
+            yChannelSelector="G"
+          />
         </filter>
       </svg>
       <Nav />
@@ -63,5 +69,5 @@ export default function Home() {
       </main>
       <Footer />
     </>
-  )
+  );
 }

@@ -56,6 +56,7 @@ private final class LazyFileURLProvider: NSObject, NSPasteboardItemDataProvider 
 }
 
 final class AdvertisedFileCountTests: XCTestCase {
+    @MainActor
     func testCountsFileItemsWithoutMaterializingTheirURLs() {
         let pasteboard = NSPasteboard(
             name: .init("page.dropper.tests.\(UUID().uuidString)"))
@@ -112,6 +113,20 @@ final class ActiveDropTargetsTests: XCTestCase {
 
         XCTAssertFalse(targets.isEmpty)
         XCTAssertEqual(targets.ids, ["popover-window"])
+    }
+}
+
+final class DragOpenedPanelLifetimeTests: XCTestCase {
+    func testHeldPointerInsidePanelDefersAutomaticClose() {
+        XCTAssertTrue(shouldDeferDragClose(
+            pressedMouseButtons: 1, pointerInsidePanel: true))
+    }
+
+    func testReleaseOrLeavingPanelAllowsAutomaticClose() {
+        XCTAssertFalse(shouldDeferDragClose(
+            pressedMouseButtons: 0, pointerInsidePanel: true))
+        XCTAssertFalse(shouldDeferDragClose(
+            pressedMouseButtons: 1, pointerInsidePanel: false))
     }
 }
 

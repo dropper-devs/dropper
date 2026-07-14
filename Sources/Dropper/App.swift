@@ -4,8 +4,6 @@ import AppKit
 @MainActor
 enum DropperMain {
     static func main() {
-        CLI.runIfRequested()
-
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate

@@ -1,3 +1,4 @@
+import AppKit
 import CoreGraphics
 import Foundation
 
@@ -162,21 +163,37 @@ public struct MarkupShape: Identifiable, Equatable, Sendable {
 }
 
 public enum MarkupPalette {
-    /// sRGB components, order: red, orange, yellow, green, blue, white, black.
-    public static let colors: [(red: CGFloat, green: CGFloat, blue: CGFloat)] = [
-        (0.96, 0.26, 0.21),
-        (1.00, 0.58, 0.00),
-        (1.00, 0.84, 0.04),
-        (0.20, 0.78, 0.35),
-        (0.04, 0.52, 1.00),
-        (1.00, 1.00, 1.00),
-        (0.00, 0.00, 0.00),
+    /// A named annotation color with sRGB components.
+    public struct Color: Sendable {
+        public let name: String
+        public let red: CGFloat
+        public let green: CGFloat
+        public let blue: CGFloat
+    }
+
+    /// Order: red, orange, yellow, green, blue, white, black.
+    public static let colors: [Color] = [
+        Color(name: "Red", red: 0.96, green: 0.26, blue: 0.21),
+        Color(name: "Orange", red: 1.00, green: 0.58, blue: 0.00),
+        Color(name: "Yellow", red: 1.00, green: 0.84, blue: 0.04),
+        Color(name: "Green", red: 0.20, green: 0.78, blue: 0.35),
+        Color(name: "Blue", red: 0.04, green: 0.52, blue: 1.00),
+        Color(name: "White", red: 1.00, green: 1.00, blue: 1.00),
+        Color(name: "Black", red: 0.00, green: 0.00, blue: 0.00),
     ]
 
     public static func cgColor(_ index: Int) -> CGColor {
-        let clamped = min(max(index, 0), colors.count - 1)
-        let color = colors[clamped]
+        let color = colors[clampedIndex(index)]
         return CGColor(srgbRed: color.red, green: color.green, blue: color.blue, alpha: 1)
+    }
+
+    public static func nsColor(_ index: Int) -> NSColor {
+        let color = colors[clampedIndex(index)]
+        return NSColor(srgbRed: color.red, green: color.green, blue: color.blue, alpha: 1)
+    }
+
+    private static func clampedIndex(_ index: Int) -> Int {
+        min(max(index, 0), colors.count - 1)
     }
 }
 

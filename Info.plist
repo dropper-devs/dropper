@@ -22,6 +22,8 @@
 	<string>14.0</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>Dropper needs screen recording access to capture screenshots you choose to share.</string>
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSPrincipalClass</key>

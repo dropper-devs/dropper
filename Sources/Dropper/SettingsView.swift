@@ -13,6 +13,11 @@ struct SettingsView: View {
     @State private var bucket: String
     @State private var prefix: String
     @State private var publicBase: String
+    @State private var configurationError: String?
+    @State private var isConnecting = false
+    @State private var connectGeneration = GenerationToken()
+    @State private var folderGeneration = GenerationToken()
+    @State private var viewCountGeneration = GenerationToken()
 
     // Folder browser
     @State private var browsing = false
@@ -29,11 +34,13 @@ struct SettingsView: View {
     let onSave: () -> Void
     let onViewCountsChanged: () -> Void
     let onClose: () -> Void
+    let canSave: () -> Bool
 
     init(viewCounts: ShareViewCountState,
          onSave: @escaping () -> Void,
          onViewCountsChanged: @escaping () -> Void,
-         onClose: @escaping () -> Void) {
+         onClose: @escaping () -> Void,
+         canSave: @escaping () -> Bool = { true }) {
         let snapshot = ConfigStore.snapshot()
         _viewCounts = ObservedObject(wrappedValue: viewCounts)
         _accountID = State(initialValue: snapshot.accountID)
@@ -43,6 +50,7 @@ struct SettingsView: View {
         self.onSave = onSave
         self.onViewCountsChanged = onViewCountsChanged
         self.onClose = onClose
+        self.canSave = canSave
     }
 
     var body: some View {
@@ -82,7 +90,10 @@ struct SettingsView: View {
                 onEnabled: viewCountsEnabled)
         }
         .task {
-            await checkViewCountAccess()
+            _ = await checkViewCountAccess()
+        }
+        .onDisappear {
+            invalidateOperations()
         }
     }
 
@@ -100,7 +111,7 @@ struct SettingsView: View {
                 SecureField("Token", text: $token)
                     .textFieldStyle(.roundedBorder)
                 Button("Connect") { connect() }
-                    .disabled(token.isEmpty)
+                    .disabled(token.isEmpty || isConnecting || !canSave())
             }
             if let tokenStatus {
                 Text(tokenStatus)
@@ -111,29 +122,60 @@ struct SettingsView: View {
     }
 
     private func connect() {
+        let pasted = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !pasted.isEmpty, !isConnecting else { return }
+        guard canSave() else {
+            tokenStatus = "Wait for the current upload to finish before replacing the token."
+            return
+        }
+        let generation = connectGeneration.next()
+        isConnecting = true
         tokenStatus = "Verifying…"
-        let pasted = token
         Task {
             do {
                 let tokenID = try await CloudflareAPI.verifyToken(pasted)
-                Keychain.saveToken(pasted)
-                UserDefaults.standard.set(tokenID, forKey: ConfigStore.keys.tokenID)
+                // Persist immediately after verification: a successfully
+                // verified token must not be silently discarded because the
+                // window closed while account discovery was still in flight.
+                guard canSave() else {
+                    guard connectGeneration.isCurrent(generation) else { return }
+                    isConnecting = false
+                    tokenStatus = "Wait for the current upload to finish before replacing the token."
+                    return
+                }
+                try ConfigStore.savePrimaryCredentials(token: pasted, tokenID: tokenID)
                 hasStoredToken = true
+
                 var status = "Token verified — credentials derived and stored."
                 // Best effort: fill the account ID from the token's scope.
-                if let accounts = try? await CloudflareAPI.accounts(pasted),
-                   let first = accounts.first {
-                    accountID = first.id
+                let discoveredAccount: CloudflareAPI.Account?
+                do {
+                    discoveredAccount = try await CloudflareAPI.accounts(pasted).first
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    discoveredAccount = nil
+                }
+                guard connectGeneration.isCurrent(generation) else { return }
+                if let first = discoveredAccount {
+                    accountID = first.id.lowercased()
                     status += " Account: \(first.name)."
                 }
                 tokenStatus = status
                 token = ""
+                isConnecting = false
                 viewCounts.reset()
-                await checkViewCountAccess(force: true)
-                if viewCounts.accessState == .available {
+                let access = await checkViewCountAccess(force: true)
+                guard connectGeneration.isCurrent(generation) else { return }
+                if access == .available {
                     onViewCountsChanged()
                 }
+            } catch is CancellationError {
+                guard connectGeneration.isCurrent(generation) else { return }
+                isConnecting = false
             } catch {
+                guard connectGeneration.isCurrent(generation) else { return }
+                isConnecting = false
                 tokenStatus = "Failed: \(error.localizedDescription)"
             }
         }
@@ -142,21 +184,29 @@ struct SettingsView: View {
     // MARK: - Fields
 
     private var fieldsSection: some View {
-        Grid(alignment: .leading, verticalSpacing: 8) {
-            GridRow {
-                Text("Account ID")
-                TextField("", text: $accountID).textFieldStyle(.roundedBorder)
+        VStack(alignment: .leading, spacing: 6) {
+            Grid(alignment: .leading, verticalSpacing: 8) {
+                GridRow {
+                    Text("Account ID")
+                    TextField("", text: $accountID).textFieldStyle(.roundedBorder)
+                }
+                GridRow {
+                    Text("Bucket")
+                    TextField("", text: $bucket).textFieldStyle(.roundedBorder)
+                }
+                GridRow {
+                    Text("Public URL")
+                    TextField("https://…", text: $publicBase).textFieldStyle(.roundedBorder)
+                }
             }
-            GridRow {
-                Text("Bucket")
-                TextField("", text: $bucket).textFieldStyle(.roundedBorder)
-            }
-            GridRow {
-                Text("Public URL")
-                TextField("https://…", text: $publicBase).textFieldStyle(.roundedBorder)
+            .font(.callout)
+            if let configurationError {
+                Text(configurationError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .font(.callout)
     }
 
     // MARK: - View Counts
@@ -250,19 +300,29 @@ struct SettingsView: View {
         Keychain.loadAnalyticsToken() ?? Keychain.loadToken()
     }
 
-    private func checkViewCountAccess(force: Bool = false) async {
-        guard force || viewCounts.accessState == .unknown else { return }
-        guard !viewCounts.isLoading, let token = analyticsToken() else { return }
-        await viewCounts.checkAccess(
+    private func checkViewCountAccess(
+        force: Bool = false
+    ) async -> ShareViewCountState.AccessState? {
+        guard force || viewCounts.accessState == .unknown else {
+            return viewCounts.accessState
+        }
+        // Opening Settings must not supersede ShareStore's in-flight count
+        // load. Explicit retries/config changes use `force` and refresh the
+        // store after a successful probe.
+        guard force || !viewCounts.isLoading else { return nil }
+        guard let token = analyticsToken() else { return nil }
+        let generation = viewCountGeneration.next()
+        let access = await viewCounts.checkAccess(
             accountID: accountID.trimmingCharacters(in: .whitespaces),
             bucketName: bucket.trimmingCharacters(in: .whitespaces),
             token: token)
+        guard viewCountGeneration.isCurrent(generation) else { return nil }
+        return access
     }
 
     private func retryViewCountAccess() {
         Task {
-            await checkViewCountAccess(force: true)
-            if viewCounts.accessState == .available {
+            if await checkViewCountAccess(force: true) == .available {
                 onViewCountsChanged()
             }
         }
@@ -279,8 +339,7 @@ struct SettingsView: View {
         hasStoredAnalyticsToken = false
         viewCounts.reset()
         Task {
-            await checkViewCountAccess(force: true)
-            if viewCounts.accessState == .available {
+            if await checkViewCountAccess(force: true) == .available {
                 onViewCountsChanged()
             }
         }
@@ -377,29 +436,42 @@ struct SettingsView: View {
                 TextField("New folder name", text: $newFolderName)
                     .textFieldStyle(.roundedBorder)
                 Button("Create") { createFolder() }
-                    .disabled(newFolderName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(newFolderName
+                        .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
     }
 
-    private func browseClient() -> R2Client? {
-        guard let credentials = ConfigStore.resolveCredentials() else { return nil }
-        let config = AppConfigSnapshot(accountID: accountID, bucket: bucket,
-                                       prefix: "", publicBase: publicBase)
+    private func browseClient() throws -> R2Client {
+        guard let credentials = ConfigStore.resolveCredentials() else {
+            throw SettingsOperationError.missingCredentials
+        }
+        let config = try AppConfigSnapshot.validated(
+            accountID: accountID, bucket: bucket,
+            prefix: "", publicBase: publicBase)
         return R2Client(credentials: credentials, config: config)
     }
 
     private func loadFolders() {
-        guard let client = browseClient() else {
-            browseError = "No credentials — connect a token first."
+        let generation = folderGeneration.next()
+        let client: R2Client
+        do {
+            client = try browseClient()
+        } catch {
+            browseError = error.localizedDescription
+            folders = []
             return
         }
         browseError = nil
         let listPrefix = browsePath.isEmpty ? "" : "\(browsePath)/"
         Task {
+            defer { client.finishTasksAndInvalidate() }
             do {
-                folders = try await client.listFolders(prefix: listPrefix)
+                let result = try await client.listFolders(prefix: listPrefix)
+                guard folderGeneration.isCurrent(generation) else { return }
+                folders = result
             } catch {
+                guard folderGeneration.isCurrent(generation) else { return }
                 browseError = error.localizedDescription
                 folders = []
             }
@@ -407,16 +479,39 @@ struct SettingsView: View {
     }
 
     private func createFolder() {
-        guard let client = browseClient() else { return }
-        let name = newFolderName.trimmingCharacters(in: .whitespaces)
+        let name = newFolderName.trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "/", with: "-")
+        guard !name.isEmpty else {
+            browseError = "Enter a folder name."
+            return
+        }
         let path = browsePath.isEmpty ? name : "\(browsePath)/\(name)"
+        do {
+            _ = try AppConfigSnapshot.validated(
+                accountID: accountID, bucket: bucket,
+                prefix: path, publicBase: publicBase)
+        } catch {
+            browseError = error.localizedDescription
+            return
+        }
+
+        let generation = folderGeneration.next()
+        let client: R2Client
+        do {
+            client = try browseClient()
+        } catch {
+            browseError = error.localizedDescription
+            return
+        }
         Task {
+            defer { client.finishTasksAndInvalidate() }
             do {
                 try await client.createFolder(path: path)
+                guard folderGeneration.isCurrent(generation) else { return }
                 newFolderName = ""
                 loadFolders()
             } catch {
+                guard folderGeneration.isCurrent(generation) else { return }
                 browseError = error.localizedDescription
             }
         }
@@ -425,19 +520,69 @@ struct SettingsView: View {
     // MARK: - Save
 
     private func save() {
+        guard !isConnecting else {
+            configurationError = "Wait for token verification to finish before saving."
+            return
+        }
+        guard canSave() else {
+            configurationError = "Wait for the current upload to finish before changing settings."
+            return
+        }
+        let validated: AppConfigSnapshot
+        do {
+            validated = try AppConfigSnapshot.validated(
+                accountID: accountID, bucket: bucket,
+                prefix: prefix, publicBase: publicBase)
+        } catch {
+            configurationError = error.localizedDescription
+            return
+        }
+        invalidateOperations()
         let d = UserDefaults.standard
-        d.set(accountID.trimmingCharacters(in: .whitespaces), forKey: ConfigStore.keys.account)
-        d.set(bucket.trimmingCharacters(in: .whitespaces), forKey: ConfigStore.keys.bucket)
-        d.set(prefix.trimmingCharacters(in: CharacterSet(charactersIn: "/ ")),
-              forKey: ConfigStore.keys.prefix)
-        d.set(publicBase.trimmingCharacters(in: CharacterSet(charactersIn: "/ ")),
-              forKey: ConfigStore.keys.publicBase)
+        d.set(validated.accountID, forKey: ConfigStore.keys.account)
+        d.set(validated.bucket, forKey: ConfigStore.keys.bucket)
+        d.set(validated.prefix, forKey: ConfigStore.keys.prefix)
+        d.set(validated.publicBase, forKey: ConfigStore.keys.publicBase)
         d.set(convertHEIC, forKey: ConfigStore.keys.convertHEIC)
         d.set(convertAIFF, forKey: ConfigStore.keys.convertAIFF)
         d.set(convertMOV, forKey: ConfigStore.keys.convertMOV)
         onSave()
         onClose()
     }
+
+    private func invalidateOperations() {
+        connectGeneration.invalidate()
+        folderGeneration.invalidate()
+        viewCountGeneration.invalidate()
+    }
+}
+
+private enum SettingsOperationError: LocalizedError {
+    case missingCredentials
+
+    var errorDescription: String? {
+        "No credentials are available — connect a token first."
+    }
+}
+
+/// Monotonic token for "only the latest async operation may commit its result".
+/// Bump with `next()` before launching work and capture the returned value;
+/// after each `await`, `guard isCurrent(token)` to drop superseded results.
+struct GenerationToken {
+    private var value = 0
+
+    /// Supersedes any in-flight work and returns the new current token.
+    mutating func next() -> Int {
+        value += 1
+        return value
+    }
+
+    /// Supersedes any in-flight work without capturing a new token.
+    mutating func invalidate() {
+        value += 1
+    }
+
+    func isCurrent(_ token: Int) -> Bool { token == value }
 }
 
 /// Optional post-setup flow. Cloudflare pre-fills the one read-only
@@ -452,6 +597,7 @@ private struct ViewCountSetupSheet: View {
     @State private var token = ""
     @State private var checking = false
     @State private var errorMessage: String?
+    @State private var verificationGeneration = GenerationToken()
 
     let accountID: String
     let bucketName: String
@@ -500,7 +646,6 @@ private struct ViewCountSetupSheet: View {
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }
-                    .disabled(checking)
                 Button("Verify & Enable") { verify() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(checking
@@ -509,12 +654,13 @@ private struct ViewCountSetupSheet: View {
         }
         .padding(20)
         .frame(width: 480)
-        .interactiveDismissDisabled(checking)
+        .onDisappear { verificationGeneration.invalidate() }
     }
 
     private func verify() {
         let candidate = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !candidate.isEmpty, !checking else { return }
+        let generation = verificationGeneration.next()
         checking = true
         errorMessage = nil
 
@@ -524,14 +670,21 @@ private struct ViewCountSetupSheet: View {
                     accountID: accountID,
                     bucketName: bucketName,
                     token: candidate)
-                Keychain.saveAnalyticsToken(candidate)
+                guard verificationGeneration.isCurrent(generation) else { return }
+                guard Keychain.saveAnalyticsToken(candidate) else {
+                    checking = false
+                    errorMessage = "Dropper couldn’t save the analytics token securely in your Keychain."
+                    return
+                }
                 token = ""
                 checking = false
                 onEnabled()
                 dismiss()
             } catch is CancellationError {
+                guard verificationGeneration.isCurrent(generation) else { return }
                 checking = false
             } catch let error as R2ViewCountError {
+                guard verificationGeneration.isCurrent(generation) else { return }
                 checking = false
                 switch error {
                 case .permissionDenied:
@@ -544,6 +697,7 @@ private struct ViewCountSetupSheet: View {
                     errorMessage = "Cloudflare couldn’t verify analytics access. Your token hasn’t been saved."
                 }
             } catch {
+                guard verificationGeneration.isCurrent(generation) else { return }
                 checking = false
                 errorMessage = "Cloudflare couldn’t verify analytics access. Your token hasn’t been saved."
             }

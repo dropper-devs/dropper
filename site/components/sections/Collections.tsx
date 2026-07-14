@@ -1,7 +1,7 @@
-import Reveal from "@/components/Reveal"
-import ProductShot from "@/components/ProductShot"
-import SplitDropMockup from "@/components/mockups/SplitDropMockup"
-import Tick from "@/components/ui/Tick"
+import Reveal from "@/components/Reveal";
+import ProductShot from "@/components/ProductShot";
+import SplitDropMockup from "@/components/mockups/SplitDropMockup";
+import Tick from "@/components/ui/Tick";
 
 export default function Collections() {
   return (
@@ -10,24 +10,20 @@ export default function Collections() {
         <Reveal>
           <div>
             <p className="section-kicker">Collections</p>
-            <h2 className="section-title">
-              Many files, one link
-            </h2>
+            <h2 className="section-title">Many files, one link</h2>
             <ul className="checklist">
               <li>
                 <Tick />
                 <span>
-                  <strong>One drop, one page.</strong> Drop five files at
-                  once and they share a single page — in the order you
-                  dropped them.
+                  <strong>One drop, one page.</strong> Drop five files at once
+                  and they share a single page — in the order you dropped them.
                 </span>
               </li>
               <li>
                 <Tick />
                 <span>
-                  <strong>Add more later.</strong> Drag onto an existing
-                  share and choose “Add to collection” — same link, more
-                  content.
+                  <strong>Add more later.</strong> Drag onto an existing share
+                  and choose “Add to collection” — same link, more content.
                 </span>
               </li>
               <li>
@@ -47,5 +43,5 @@ export default function Collections() {
         </Reveal>
       </div>
     </section>
-  )
+  );
 }

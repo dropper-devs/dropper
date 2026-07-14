@@ -29,10 +29,6 @@ final class MarkupCanvasView: NSView, NSTextFieldDelegate, NSDraggingSource {
     private var editingID: UUID?
     private var textEditor: NSTextField?
 
-    private enum CropHandle: CaseIterable {
-        case topLeft, top, topRight, right
-        case bottomRight, bottom, bottomLeft, left
-    }
     private var cropRect: CGRect?
 
     private enum Drag {
@@ -42,7 +38,8 @@ final class MarkupCanvasView: NSView, NSTextFieldDelegate, NSDraggingSource {
         case resizing(UUID, MarkupHandle, original: MarkupShape)
         case rotating(UUID, original: MarkupShape, pointerOffset: CGFloat,
                       handleUsesBottom: Bool)
-        case resizingCrop(CropHandle, original: CGRect)
+        // Crop reuses the area-selection handle so the two share resize math.
+        case resizingCrop(AreaResizeHandle, original: CGRect)
         case movingCrop(original: CGRect, start: CGPoint)
         case exportingImage(start: CGPoint)
     }
@@ -70,7 +67,7 @@ final class MarkupCanvasView: NSView, NSTextFieldDelegate, NSDraggingSource {
             shapes[position].colorIndex = index
             needsDisplay = true
         }
-        textEditor?.textColor = Self.nsColor(index)
+        textEditor?.textColor = MarkupPalette.nsColor(index)
     }
 
     func setFillColorIndex(_ index: Int?) {
@@ -95,12 +92,7 @@ final class MarkupCanvasView: NSView, NSTextFieldDelegate, NSDraggingSource {
     }
 
     private var currentFontSize: CGFloat {
-        24 * pixelScale
-    }
-
-    private static func nsColor(_ index: Int) -> NSColor {
-        let color = MarkupPalette.colors[min(max(index, 0), MarkupPalette.colors.count - 1)]
-        return NSColor(srgbRed: color.red, green: color.green, blue: color.blue, alpha: 1)
+        Self.defaultFontPoints * pixelScale
     }
 
     func flattened() -> CGImage? {
@@ -199,7 +191,9 @@ final class MarkupCanvasView: NSView, NSTextFieldDelegate, NSDraggingSource {
 
     /// Kept in view points so the rotation knob feels identical at every
     /// screenshot resolution and output zoom.
-    private var textRotationHandleOffset: CGFloat { 24 / fitScale }
+    private var textRotationHandleOffset: CGFloat {
+        Self.textRotationHandleOffsetPoints / fitScale
+    }
 
     private func imagePoint(from viewPoint: CGPoint) -> CGPoint {
         let rect = fitRect
@@ -212,6 +206,48 @@ final class MarkupCanvasView: NSView, NSTextFieldDelegate, NSDraggingSource {
         return CGPoint(x: rect.minX + imagePoint.x * fitScale,
                        y: rect.minY + imagePoint.y * fitScale)
     }
+
+    // MARK: - Metrics
+
+    // Selection marquee + resize/rotation knobs.
+    private static let marqueeStrokeColor = CGColor(gray: 1, alpha: 0.75)
+    private static let marqueeDash: [CGFloat] = [4, 3]
+    private static let moveMarqueeInset: CGFloat = 4
+    private static let handleSize: CGFloat = 8
+    private static let rotationHandleSize: CGFloat = 10
+    private static let handleFillColor = CGColor(gray: 1, alpha: 1)
+    private static let handleStrokeColor = CGColor(gray: 0, alpha: 0.6)
+    private static let rotationHandleColor = CGColor(srgbRed: 0.55, green: 0.61,
+                                                     blue: 0.98, alpha: 1)
+
+    // Crop overlay.
+    private static let cropDimColor = CGColor(gray: 0, alpha: 0.48)
+    private static let cropStrokeColor = CGColor(gray: 1, alpha: 0.9)
+    private static let cropDash: [CGFloat] = [5, 3]
+    private static let cropHandleSize: CGFloat = 8
+    private static let cropHandleFillColor = CGColor(gray: 1, alpha: 1)
+    private static let cropHandleStrokeColor = CGColor(gray: 0, alpha: 0.75)
+    private static let overlayEdgeInset: CGFloat = 4  // keep chrome inside the fit rect
+    private static let cropBadgeHeight: CGFloat = 24
+    private static let cropBadgeCornerRadius: CGFloat = 12
+    private static let cropBadgeFontSize: CGFloat = 12
+    private static let cropBadgeLabelInset: CGFloat = 8   // horizontal text padding
+    private static let cropBadgeTopOffset: CGFloat = 8    // below the crop box top
+    private static let cropBadgeFillColor = CGColor(gray: 0, alpha: 0.68)
+    private static let cropBadgeStrokeColor = CGColor(gray: 1, alpha: 0.16)
+
+    // Interaction distances, in the noted space.
+    private static let handleHitTolerancePoints: CGFloat = 8   // image points ÷ fitScale
+    private static let duplicateDragThresholdPoints: CGFloat = 4  // image points ÷ fitScale
+    private static let exportDragThresholdPoints: CGFloat = 4     // view points
+    private static let degenerateSpanPoints: CGFloat = 3         // image pixels
+    private static let minimumCropSizePoints: CGFloat = 12       // image points ÷ fitScale
+
+    // Text tuning.
+    private static let defaultFontPoints: CGFloat = 24
+    private static let textRotationHandleOffsetPoints: CGFloat = 24
+    private static let textMinimumEdgePoints: CGFloat = 8
+    private static let textMinimumScaleFloor: CGFloat = 0.05
 
     // MARK: - Drawing
 
@@ -229,77 +265,110 @@ final class MarkupCanvasView: NSView, NSTextFieldDelegate, NSDraggingSource {
         context.restoreGState()
 
         if let shape = shapes.first(where: { $0.id == selectedID }), shape.id != editingID {
-            let rotationHandleUsesBottom: Bool?
-            if case let .rotating(id, _, _, usesBottom) = drag, id == shape.id {
-                rotationHandleUsesBottom = usesBottom
-            } else {
-                rotationHandleUsesBottom = nil
-            }
-            let handles = MarkupGeometry.handles(
-                for: shape, rotationHandleOffset: textRotationHandleOffset,
-                within: imageSize,
-                rotationHandleUsesBottom: rotationHandleUsesBottom)
-            if shape.tool == .text {
-                // The marquee follows the text's actual angle. A short stem
-                // leads to the circular rotation knob; corners remain the
-                // only proportional-resize handles.
-                let corners = shape.rotatedTextCorners.map(viewPoint)
-                if let first = corners.first {
-                    let marquee = CGMutablePath()
-                    marquee.move(to: first)
-                    for corner in corners.dropFirst() { marquee.addLine(to: corner) }
-                    marquee.closeSubpath()
-                    context.saveGState()
-                    context.setStrokeColor(CGColor(gray: 1, alpha: 0.75))
-                    context.setLineWidth(1)
-                    context.setLineDash(phase: 0, lengths: [4, 3])
-                    context.addPath(marquee)
-                    context.strokePath()
-
-                    let rotation = MarkupGeometry.rotationHandle(
-                        for: shape, offset: textRotationHandleOffset,
-                        within: imageSize,
-                        useBottom: rotationHandleUsesBottom)
-                    context.setLineDash(phase: 0, lengths: [])
-                    context.move(to: viewPoint(from: rotation.anchor))
-                    context.addLine(to: viewPoint(from: rotation.position))
-                    context.strokePath()
-                    context.restoreGState()
-                }
-            } else if handles.isEmpty {
-                // Pen is move-only, so its full bounds get a light marquee.
-                let rect = shape.boundingRect
-                let origin = viewPoint(from: CGPoint(x: rect.minX, y: rect.minY))
-                let corner = viewPoint(from: CGPoint(x: rect.maxX, y: rect.maxY))
-                let box = CGRect(x: origin.x, y: origin.y,
-                                 width: corner.x - origin.x,
-                                 height: corner.y - origin.y)
-                    .insetBy(dx: -4, dy: -4)
-                context.saveGState()
-                context.setStrokeColor(CGColor(gray: 1, alpha: 0.75))
-                context.setLineWidth(1)
-                context.setLineDash(phase: 0, lengths: [4, 3])
-                context.stroke(box)
-                context.restoreGState()
-            }
-            for (handle, position) in handles {
-                let center = viewPoint(from: position)
-                let side: CGFloat = handle == .rotation ? 10 : 8
-                let knob = CGRect(x: center.x - side / 2, y: center.y - side / 2,
-                                  width: side, height: side)
-                context.setFillColor(handle == .rotation
-                    ? CGColor(srgbRed: 0.55, green: 0.61, blue: 0.98, alpha: 1)
-                    : CGColor(gray: 1, alpha: 1))
-                context.setStrokeColor(CGColor(gray: 0, alpha: 0.6))
-                context.setLineWidth(1)
-                context.fillEllipse(in: knob)
-                context.strokeEllipse(in: knob)
-            }
+            drawSelection(shape, in: context)
         }
 
         if let cropRect {
             drawCropOverlay(cropRect, in: context)
         }
+    }
+
+    /// The selected shape's marquee and its resize/rotation knobs.
+    private func drawSelection(_ shape: MarkupShape, in context: CGContext) {
+        let rotationHandleUsesBottom: Bool?
+        if case let .rotating(id, _, _, usesBottom) = drag, id == shape.id {
+            rotationHandleUsesBottom = usesBottom
+        } else {
+            rotationHandleUsesBottom = nil
+        }
+        let handles = MarkupGeometry.handles(
+            for: shape, rotationHandleOffset: textRotationHandleOffset,
+            within: imageSize,
+            rotationHandleUsesBottom: rotationHandleUsesBottom)
+        if shape.tool == .text {
+            drawTextMarquee(shape, rotationHandleUsesBottom: rotationHandleUsesBottom,
+                            in: context)
+        } else if handles.isEmpty {
+            drawMoveOnlyMarquee(shape, in: context)
+        }
+        drawHandleKnobs(handles, in: context)
+    }
+
+    /// A dashed box that follows the text's angle, with a short stem out to the
+    /// circular rotation knob; corners remain the only proportional handles.
+    private func drawTextMarquee(_ shape: MarkupShape,
+                                 rotationHandleUsesBottom: Bool?,
+                                 in context: CGContext) {
+        let corners = shape.rotatedTextCorners.map(viewPoint)
+        guard let first = corners.first else { return }
+        let marquee = CGMutablePath()
+        marquee.move(to: first)
+        for corner in corners.dropFirst() { marquee.addLine(to: corner) }
+        marquee.closeSubpath()
+        context.saveGState()
+        dashedSelectionStroke(marquee, in: context)
+
+        let rotation = MarkupGeometry.rotationHandle(
+            for: shape, offset: textRotationHandleOffset,
+            within: imageSize,
+            useBottom: rotationHandleUsesBottom)
+        context.setLineDash(phase: 0, lengths: [])
+        context.move(to: viewPoint(from: rotation.anchor))
+        context.addLine(to: viewPoint(from: rotation.position))
+        context.strokePath()
+        context.restoreGState()
+    }
+
+    /// Pen is move-only, so its full bounds get a light dashed marquee.
+    private func drawMoveOnlyMarquee(_ shape: MarkupShape, in context: CGContext) {
+        let rect = shape.boundingRect
+        let origin = viewPoint(from: CGPoint(x: rect.minX, y: rect.minY))
+        let corner = viewPoint(from: CGPoint(x: rect.maxX, y: rect.maxY))
+        let box = CGRect(x: origin.x, y: origin.y,
+                         width: corner.x - origin.x,
+                         height: corner.y - origin.y)
+            .insetBy(dx: -Self.moveMarqueeInset, dy: -Self.moveMarqueeInset)
+        context.saveGState()
+        dashedSelectionStroke(CGPath(rect: box, transform: nil), in: context)
+        context.restoreGState()
+    }
+
+    private func drawHandleKnobs(
+        _ handles: [(handle: MarkupHandle, position: CGPoint)],
+        in context: CGContext
+    ) {
+        for (handle, position) in handles {
+            let center = viewPoint(from: position)
+            let side = handle == .rotation ? Self.rotationHandleSize : Self.handleSize
+            let fill = handle == .rotation ? Self.rotationHandleColor : Self.handleFillColor
+            drawHandle(at: center, size: side, fill: fill, in: context)
+        }
+    }
+
+    /// Configures the shared dashed-selection stroke and strokes `path`,
+    /// leaving the stroke color and width set for any follow-on drawing.
+    private func dashedSelectionStroke(_ path: CGPath, in context: CGContext) {
+        context.setStrokeColor(Self.marqueeStrokeColor)
+        context.setLineWidth(1)
+        context.setLineDash(phase: 0, lengths: Self.marqueeDash)
+        context.addPath(path)
+        context.strokePath()
+    }
+
+    /// Centered square of side `size` for a handle knob.
+    private static func handleRect(center: CGPoint, size: CGFloat) -> CGRect {
+        CGRect(x: center.x - size / 2, y: center.y - size / 2, width: size, height: size)
+    }
+
+    /// A filled, hairline-stroked circular knob used for shape handles.
+    private func drawHandle(at center: CGPoint, size: CGFloat, fill: CGColor,
+                            in context: CGContext) {
+        let knob = Self.handleRect(center: center, size: size)
+        context.setFillColor(fill)
+        context.setStrokeColor(Self.handleStrokeColor)
+        context.setLineWidth(1)
+        context.fillEllipse(in: knob)
+        context.strokeEllipse(in: knob)
     }
 
     private func drawCropOverlay(_ rect: CGRect, in context: CGContext) {
@@ -312,50 +381,58 @@ final class MarkupCanvasView: NSView, NSTextFieldDelegate, NSDraggingSource {
         context.saveGState()
         context.addRect(fitRect)
         context.addRect(cropBox)
-        context.setFillColor(CGColor(gray: 0, alpha: 0.48))
+        context.setFillColor(Self.cropDimColor)
         context.fillPath(using: .evenOdd)
-        context.setStrokeColor(CGColor(gray: 1, alpha: 0.9))
+        context.setStrokeColor(Self.cropStrokeColor)
         context.setLineWidth(1)
-        context.setLineDash(phase: 0, lengths: [5, 3])
+        context.setLineDash(phase: 0, lengths: Self.cropDash)
         context.stroke(cropBox)
         context.setLineDash(phase: 0, lengths: [])
 
-        for (_, position) in cropHandles(for: rect) {
-            var center = viewPoint(from: position)
-            center.x = min(max(center.x, fitRect.minX + 4), fitRect.maxX - 4)
-            center.y = min(max(center.y, fitRect.minY + 4), fitRect.maxY - 4)
-            let handle = CGRect(x: center.x - 4, y: center.y - 4, width: 8, height: 8)
-            context.setFillColor(CGColor(gray: 1, alpha: 1))
-            context.setStrokeColor(CGColor(gray: 0, alpha: 0.75))
-            context.fill(handle)
-            context.stroke(handle)
+        for handle in AreaResizeHandle.allCases {
+            var center = viewPoint(from: handle.position(in: rect))
+            center.x = min(max(center.x, fitRect.minX + Self.overlayEdgeInset),
+                           fitRect.maxX - Self.overlayEdgeInset)
+            center.y = min(max(center.y, fitRect.minY + Self.overlayEdgeInset),
+                           fitRect.maxY - Self.overlayEdgeInset)
+            let knob = Self.handleRect(center: center, size: Self.cropHandleSize)
+            context.setFillColor(Self.cropHandleFillColor)
+            context.setStrokeColor(Self.cropHandleStrokeColor)
+            context.fill(knob)
+            context.stroke(knob)
         }
 
         let pixels = cropPixelRect(rect)
         let label = NSAttributedString(
             string: "\(Int(pixels.width)) × \(Int(pixels.height))",
             attributes: [
-                .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .semibold),
+                .font: NSFont.monospacedSystemFont(ofSize: Self.cropBadgeFontSize,
+                                                   weight: .semibold),
                 .foregroundColor: NSColor.white,
             ]
         )
         let labelSize = label.size()
-        let badgeSize = CGSize(width: labelSize.width + 16, height: 24)
-        let badgeX = min(max(cropBox.midX - badgeSize.width / 2, fitRect.minX + 4),
-                         fitRect.maxX - badgeSize.width - 4)
-        let badgeY = min(max(cropBox.minY + 8, fitRect.minY + 4),
-                         fitRect.maxY - badgeSize.height - 4)
+        let badgeSize = CGSize(width: labelSize.width + Self.cropBadgeLabelInset * 2,
+                               height: Self.cropBadgeHeight)
+        let badgeX = min(max(cropBox.midX - badgeSize.width / 2,
+                             fitRect.minX + Self.overlayEdgeInset),
+                         fitRect.maxX - badgeSize.width - Self.overlayEdgeInset)
+        let badgeY = min(max(cropBox.minY + Self.cropBadgeTopOffset,
+                             fitRect.minY + Self.overlayEdgeInset),
+                         fitRect.maxY - badgeSize.height - Self.overlayEdgeInset)
         let badge = CGRect(origin: CGPoint(x: badgeX, y: badgeY), size: badgeSize)
-        context.addPath(CGPath(roundedRect: badge, cornerWidth: 12, cornerHeight: 12,
-                               transform: nil))
-        context.setFillColor(CGColor(gray: 0, alpha: 0.68))
+        context.addPath(CGPath(roundedRect: badge,
+                               cornerWidth: Self.cropBadgeCornerRadius,
+                               cornerHeight: Self.cropBadgeCornerRadius, transform: nil))
+        context.setFillColor(Self.cropBadgeFillColor)
         context.fillPath()
-        context.addPath(CGPath(roundedRect: badge, cornerWidth: 12, cornerHeight: 12,
-                               transform: nil))
-        context.setStrokeColor(CGColor(gray: 1, alpha: 0.16))
+        context.addPath(CGPath(roundedRect: badge,
+                               cornerWidth: Self.cropBadgeCornerRadius,
+                               cornerHeight: Self.cropBadgeCornerRadius, transform: nil))
+        context.setStrokeColor(Self.cropBadgeStrokeColor)
         context.setLineWidth(1)
         context.strokePath()
-        label.draw(at: CGPoint(x: badge.minX + 8,
+        label.draw(at: CGPoint(x: badge.minX + Self.cropBadgeLabelInset,
                                y: badge.midY - labelSize.height / 2))
         context.restoreGState()
     }
@@ -384,7 +461,7 @@ final class MarkupCanvasView: NSView, NSTextFieldDelegate, NSDraggingSource {
         window?.makeFirstResponder(self)
         let viewPoint = convert(event.locationInWindow, from: nil)
         let point = imagePoint(from: viewPoint)
-        let tolerance = 8 / fitScale
+        let tolerance = Self.handleHitTolerancePoints / fitScale
 
         if let cropRect {
             if let handle = cropHandle(at: point, in: cropRect, tolerance: tolerance) {
@@ -497,7 +574,8 @@ final class MarkupCanvasView: NSView, NSTextFieldDelegate, NSDraggingSource {
             update(id) { $0 = MarkupGeometry.moved($0, by: translation, within: self.imageSize) }
             self.drag = .moving(id, last: point)
         case .duplicating(let source, let start):
-            guard hypot(point.x - start.x, point.y - start.y) >= 4 / fitScale else { return }
+            guard hypot(point.x - start.x, point.y - start.y)
+                >= Self.duplicateDragThresholdPoints / fitScale else { return }
             let copy = duplicate(source)
             shapes.append(copy)
             selectedID = copy.id
@@ -528,11 +606,14 @@ final class MarkupCanvasView: NSView, NSTextFieldDelegate, NSDraggingSource {
                                    symmetric: event.modifierFlags.contains(.option))
             needsDisplay = true
         case .movingCrop(let original, let start):
-            cropRect = movedCrop(original, by: CGSize(width: point.x - start.x,
-                                                       height: point.y - start.y))
+            cropRect = AreaSelectionGeometry.moved(
+                original,
+                by: CGSize(width: point.x - start.x, height: point.y - start.y),
+                in: imageSize)
             needsDisplay = true
         case .exportingImage(let start):
-            guard hypot(viewPoint.x - start.x, viewPoint.y - start.y) >= 4 else { return }
+            guard hypot(viewPoint.x - start.x, viewPoint.y - start.y)
+                >= Self.exportDragThresholdPoints else { return }
             self.drag = nil
             beginImageExportDrag(with: event)
         }
@@ -546,7 +627,7 @@ final class MarkupCanvasView: NSView, NSTextFieldDelegate, NSDraggingSource {
             let span = shape.tool == .pen
                 ? max(shape.boundingRect.width, shape.boundingRect.height)
                 : hypot(shape.end.x - shape.start.x, shape.end.y - shape.start.y)
-            if span < 3 {
+            if span < Self.degenerateSpanPoints {
                 shapes.remove(at: position)
                 selectedID = nil
                 needsDisplay = true
@@ -571,58 +652,48 @@ final class MarkupCanvasView: NSView, NSTextFieldDelegate, NSDraggingSource {
                     rotationRadians: shape.rotationRadians)
     }
 
-    private func cropHandles(for rect: CGRect) -> [(CropHandle, CGPoint)] {
-        [
-            (.topLeft, CGPoint(x: rect.minX, y: rect.minY)),
-            (.top, CGPoint(x: rect.midX, y: rect.minY)),
-            (.topRight, CGPoint(x: rect.maxX, y: rect.minY)),
-            (.right, CGPoint(x: rect.maxX, y: rect.midY)),
-            (.bottomRight, CGPoint(x: rect.maxX, y: rect.maxY)),
-            (.bottom, CGPoint(x: rect.midX, y: rect.maxY)),
-            (.bottomLeft, CGPoint(x: rect.minX, y: rect.maxY)),
-            (.left, CGPoint(x: rect.minX, y: rect.midY)),
-        ]
-    }
-
     private func cropHandle(at point: CGPoint, in rect: CGRect,
-                            tolerance: CGFloat) -> CropHandle? {
-        cropHandles(for: rect).first {
-            hypot($0.1.x - point.x, $0.1.y - point.y) <= tolerance
-        }?.0
+                            tolerance: CGFloat) -> AreaResizeHandle? {
+        AreaResizeHandle.allCases.first {
+            let position = $0.position(in: rect)
+            return hypot(position.x - point.x, position.y - point.y) <= tolerance
+        }
     }
 
-    private func resizedCrop(_ original: CGRect, handle: CropHandle,
+    /// Resizes the crop. The plain drag reuses the shared area-selection resize
+    /// (opposite edge fixed); the option-key symmetric drag grows the crop
+    /// about its center and stays unique to cropping. `point` is pre-clamped to
+    /// the image, so both paths land pixel-for-pixel on the old behavior.
+    private func resizedCrop(_ original: CGRect, handle: AreaResizeHandle,
                              to point: CGPoint, symmetric: Bool) -> CGRect {
-        let minimum = max(12 / fitScale, 1)
+        let minimum = max(Self.minimumCropSizePoints / fitScale, 1)
+
+        guard symmetric else {
+            let anchor = handle.position(in: original)
+            let translation = CGSize(width: point.x - anchor.x,
+                                     height: point.y - anchor.y)
+            return AreaSelectionGeometry.resized(
+                original, handle: handle, by: translation, in: imageSize,
+                minimumSize: CGSize(width: minimum, height: minimum))
+        }
+
         var minX = original.minX, maxX = original.maxX
         var minY = original.minY, maxY = original.maxY
-        let changesLeft = handle == .topLeft || handle == .left || handle == .bottomLeft
-        let changesRight = handle == .topRight || handle == .right || handle == .bottomRight
-        let changesTop = handle == .topLeft || handle == .top || handle == .topRight
-        let changesBottom = handle == .bottomLeft || handle == .bottom || handle == .bottomRight
-
-        if symmetric {
-            if changesLeft || changesRight {
-                let center = original.midX
-                let distance = changesLeft ? center - point.x : point.x - center
-                var half = max(distance, minimum / 2)
-                half = min(half, min(center, imageSize.width - center))
-                minX = center - half
-                maxX = center + half
-            }
-            if changesTop || changesBottom {
-                let center = original.midY
-                let distance = changesTop ? center - point.y : point.y - center
-                var half = max(distance, minimum / 2)
-                half = min(half, min(center, imageSize.height - center))
-                minY = center - half
-                maxY = center + half
-            }
-        } else {
-            if changesLeft { minX = min(point.x, maxX - minimum) }
-            if changesRight { maxX = max(point.x, minX + minimum) }
-            if changesTop { minY = min(point.y, maxY - minimum) }
-            if changesBottom { maxY = max(point.y, minY + minimum) }
+        if handle.adjustsLeft || handle.adjustsRight {
+            let center = original.midX
+            let distance = handle.adjustsLeft ? center - point.x : point.x - center
+            var half = max(distance, minimum / 2)
+            half = min(half, min(center, imageSize.width - center))
+            minX = center - half
+            maxX = center + half
+        }
+        if handle.adjustsTop || handle.adjustsBottom {
+            let center = original.midY
+            let distance = handle.adjustsTop ? center - point.y : point.y - center
+            var half = max(distance, minimum / 2)
+            half = min(half, min(center, imageSize.height - center))
+            minY = center - half
+            maxY = center + half
         }
 
         minX = min(max(minX, 0), imageSize.width)
@@ -632,12 +703,51 @@ final class MarkupCanvasView: NSView, NSTextFieldDelegate, NSDraggingSource {
         return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
     }
 
-    private func movedCrop(_ original: CGRect, by translation: CGSize) -> CGRect {
-        let dx = min(max(translation.width, -original.minX),
-                     imageSize.width - original.maxX)
-        let dy = min(max(translation.height, -original.minY),
-                     imageSize.height - original.maxY)
-        return original.offsetBy(dx: dx, dy: dy)
+    /// Maps a text marquee corner to its fixed anchor corner, the dragged
+    /// corner opposite it, and the sign of the half-extent offset used to
+    /// recenter the box after scaling. Indices are into `rotatedTextCorners`.
+    private struct TextResizeCorner {
+        let anchorIndex: Int
+        let oppositeIndex: Int
+        let halfSignX: CGFloat
+        let halfSignY: CGFloat
+    }
+
+    private static func textResizeCorner(for handle: MarkupHandle) -> TextResizeCorner? {
+        switch handle {
+        case .topLeft:
+            TextResizeCorner(anchorIndex: 2, oppositeIndex: 0, halfSignX: 1, halfSignY: 1)
+        case .topRight:
+            TextResizeCorner(anchorIndex: 3, oppositeIndex: 1, halfSignX: -1, halfSignY: 1)
+        case .bottomLeft:
+            TextResizeCorner(anchorIndex: 1, oppositeIndex: 3, halfSignX: 1, halfSignY: -1)
+        case .bottomRight:
+            TextResizeCorner(anchorIndex: 0, oppositeIndex: 2, halfSignX: -1, halfSignY: -1)
+        case .start, .end, .curve, .rotation:
+            nil
+        }
+    }
+
+    /// Largest proportional scale that keeps every rotated corner inside the
+    /// image. Each corner is `anchor + scale * vector`, so each edge a corner
+    /// would cross contributes a single upper bound.
+    private func maximumTextScale(anchor: CGPoint, corners: [CGPoint]) -> CGFloat {
+        let epsilon: CGFloat = 0.0001
+        var maximumScale = CGFloat.greatestFiniteMagnitude
+        for corner in corners {
+            let vector = CGVector(dx: corner.x - anchor.x, dy: corner.y - anchor.y)
+            if vector.dx > epsilon {
+                maximumScale = min(maximumScale, (imageSize.width - anchor.x) / vector.dx)
+            } else if vector.dx < -epsilon {
+                maximumScale = min(maximumScale, (0 - anchor.x) / vector.dx)
+            }
+            if vector.dy > epsilon {
+                maximumScale = min(maximumScale, (imageSize.height - anchor.y) / vector.dy)
+            } else if vector.dy < -epsilon {
+                maximumScale = min(maximumScale, (0 - anchor.y) / vector.dy)
+            }
+        }
+        return maximumScale
     }
 
     /// Scales text from a corner without changing its aspect ratio. The
@@ -648,26 +758,10 @@ final class MarkupCanvasView: NSView, NSTextFieldDelegate, NSDraggingSource {
         let rect = original.unrotatedTextRect
         guard rect.width > 0, rect.height > 0, original.fontSize > 0 else { return }
         let corners = original.rotatedTextCorners
-        guard corners.count == 4 else { return }
-
-        let anchor: CGPoint
-        let originalCorner: CGPoint
-        switch handle {
-        case .topLeft:
-            anchor = corners[2]
-            originalCorner = corners[0]
-        case .topRight:
-            anchor = corners[3]
-            originalCorner = corners[1]
-        case .bottomLeft:
-            anchor = corners[1]
-            originalCorner = corners[3]
-        case .bottomRight:
-            anchor = corners[0]
-            originalCorner = corners[2]
-        case .start, .end, .curve, .rotation:
-            return
-        }
+        guard corners.count == 4,
+              let mapping = Self.textResizeCorner(for: handle) else { return }
+        let anchor = corners[mapping.anchorIndex]
+        let originalCorner = corners[mapping.oppositeIndex]
 
         let base = CGVector(dx: originalCorner.x - anchor.x,
                             dy: originalCorner.y - anchor.y)
@@ -676,27 +770,10 @@ final class MarkupCanvasView: NSView, NSTextFieldDelegate, NSDraggingSource {
         guard baseLengthSquared > 0 else { return }
 
         var scale = (current.dx * base.dx + current.dy * base.dy) / baseLengthSquared
-        let minimumScale = max(8 * pixelScale / original.fontSize, 0.05)
+        let minimumScale = max(Self.textMinimumEdgePoints * pixelScale / original.fontSize,
+                               Self.textMinimumScaleFloor)
 
-        // Every rotated corner is `anchor + scale * vector`, so each image
-        // edge contributes a simple upper bound for proportional scaling.
-        var maximumScale = CGFloat.greatestFiniteMagnitude
-        for corner in corners {
-            let vector = CGVector(dx: corner.x - anchor.x, dy: corner.y - anchor.y)
-            if vector.dx > 0.0001 {
-                maximumScale = min(maximumScale,
-                                   (imageSize.width - anchor.x) / vector.dx)
-            } else if vector.dx < -0.0001 {
-                maximumScale = min(maximumScale, (0 - anchor.x) / vector.dx)
-            }
-            if vector.dy > 0.0001 {
-                maximumScale = min(maximumScale,
-                                   (imageSize.height - anchor.y) / vector.dy)
-            } else if vector.dy < -0.0001 {
-                maximumScale = min(maximumScale, (0 - anchor.y) / vector.dy)
-            }
-        }
-        let upperScale = max(0, maximumScale)
+        let upperScale = max(0, maximumTextScale(anchor: anchor, corners: corners))
         guard upperScale > 0 else { return }
         let lowerScale = min(minimumScale, upperScale)
         scale = min(max(scale, lowerScale), upperScale)
@@ -706,19 +783,8 @@ final class MarkupCanvasView: NSView, NSTextFieldDelegate, NSDraggingSource {
             shape.rotationRadians = original.rotationRadians
             let size = MarkupRender.textMetrics(for: shape).size
             let half = CGVector(dx: size.width / 2, dy: size.height / 2)
-            let anchorOffset: CGVector
-            switch handle {
-            case .topLeft:
-                anchorOffset = CGVector(dx: half.dx, dy: half.dy)
-            case .topRight:
-                anchorOffset = CGVector(dx: -half.dx, dy: half.dy)
-            case .bottomLeft:
-                anchorOffset = CGVector(dx: half.dx, dy: -half.dy)
-            case .bottomRight:
-                anchorOffset = CGVector(dx: -half.dx, dy: -half.dy)
-            case .start, .end, .curve, .rotation:
-                return
-            }
+            let anchorOffset = CGVector(dx: mapping.halfSignX * half.dx,
+                                        dy: mapping.halfSignY * half.dy)
             let displayedOffset = MarkupGeometry.rotated(
                 anchorOffset, by: original.rotationRadians)
             let center = CGPoint(x: anchor.x - displayedOffset.dx,
@@ -801,7 +867,7 @@ final class MarkupCanvasView: NSView, NSTextFieldDelegate, NSDraggingSource {
         field.maximumNumberOfLines = 1
         field.lineBreakMode = .byClipping
         field.font = editorFont(for: shape)
-        field.textColor = Self.nsColor(shape.colorIndex)
+        field.textColor = MarkupPalette.nsColor(shape.colorIndex)
         field.delegate = self
         positionTextEditor(field, for: shape)
         addSubview(field)

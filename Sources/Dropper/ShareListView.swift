@@ -10,7 +10,7 @@ struct ShareListView: View {
     @State private var selection = Set<String>()    // selected child KEYS
     @State private var selectionAnchor: String?      // row id of the last click
     @State private var expanded = Set<String>()     // expanded share ids
-    @State private var confirming: String?          // confirm id (row id or bulk)
+    @State private var confirming: ConfirmTarget?   // armed delete confirmation
     @State private var revertTask: DispatchWorkItem?
     @State private var insertion: Insertion?        // reorder drop indicator
     @State private var newFolderName: String?       // non-nil: naming a folder
@@ -21,11 +21,17 @@ struct ShareListView: View {
         let after: Bool
     }
 
-    /// The toolbar's delete-selected confirm shares the row confirms' state
-    /// machine, so opening any confirm closes the others. No collision is
-    /// possible: share ids end in a random suffix, child keys contain "/",
-    /// and folder confirm ids are prefixed "folder:".
-    private static let bulkConfirmID = "bulk"
+    /// Identifies which delete confirmation is armed. One shared state means
+    /// opening any confirm closes the others; the enum replaces the old
+    /// stringly-typed id scheme that leaned on shares, children, and folders
+    /// never colliding as raw strings.
+    private enum ConfirmTarget: Hashable {
+        case bulk
+        case share(String)
+        case child(String)
+        case folder(String)
+    }
+
     init(store: ShareStore, state: UIState, actions: PopoverActions) {
         self.store = store
         self.state = state
@@ -160,7 +166,7 @@ struct ShareListView: View {
                 for child in store.orderedChildren(item)
                 where selection.contains(child.key) {
                     names.append(child.name)
-                    pages.append("\(item.pageURL.absoluteString)#\(child.name)")
+                    pages.append("\(item.pageURL.absoluteString)#\(child.fileName)")
                     files.append(child.fileURL.absoluteString)
                 }
             }
@@ -208,7 +214,7 @@ struct ShareListView: View {
             .disabled(selection.isEmpty)
             .help(store.showingArchive ? "Unarchive selected" : "Archive selected")
 
-            if confirming == Self.bulkConfirmID {
+            if confirming == .bulk {
                 HStack(spacing: 8) {
                     Button {
                         withAnimation { confirming = nil }
@@ -230,14 +236,14 @@ struct ShareListView: View {
                 .padding(4)
                 .contentShape(Rectangle())
                 .transition(.scale.combined(with: .opacity))
-                .onHover(perform: confirmRevertOnHover(Self.bulkConfirmID))
+                .onHover(perform: confirmRevertOnHover(.bulk))
             } else {
                 Button {
                     cancelRevert()
-                    withAnimation { confirming = Self.bulkConfirmID }
+                    withAnimation { confirming = .bulk }
                 } label: {
                     Image(systemName: "trash")
-                        .offset(y: -2)
+                        .offset(y: -1)
                 }
                 .buttonStyle(.borderless)
                 .disabled(selection.isEmpty)
@@ -387,37 +393,42 @@ struct ShareListView: View {
 
     private func folderRow(_ folderItem: FolderRow) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: "folder")
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 30, height: 30)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(folderItem.name)
-                    .lineLimit(1)
-                Text(folderItem.objectCount == 0 ? "Empty"
-                     : "\(folderItem.objectCount) object\(folderItem.objectCount == 1 ? "" : "s")  ·  \(ByteCountFormatter.string(fromByteCount: folderItem.size, countStyle: .file))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            Button {
+                let prefix = store.folder.isEmpty
+                    ? folderItem.name : "\(store.folder)/\(folderItem.name)"
+                actions.navigate(prefix)
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "folder")
+                        .foregroundStyle(Color.accentColor)
+                        .frame(width: 30, height: 30)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(folderItem.name)
+                            .lineLimit(1)
+                        Text(folderItem.objectCount == 0 ? "Empty"
+                             : "\(pluralCount(folderItem.objectCount, "object"))  ·  \(fileSize(folderItem.size))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
             }
-            Spacer()
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens this folder")
             if folderItem.objectCount == 0 {
-                deleteControls(id: "folder:\(folderItem.name)",
+                deleteControls(target: .folder(folderItem.name),
                                help: "Delete this empty folder") {
                     store.deleteEmptyFolder(named: folderItem.name)
                 }
             }
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.tertiary)
         }
         .padding(.vertical, 3)
         .padding(.horizontal, 4)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            let prefix = store.folder.isEmpty
-                ? folderItem.name : "\(store.folder)/\(folderItem.name)"
-            actions.navigate(prefix)
-        }
-        .onHover(perform: confirmRevertOnHover("folder:\(folderItem.name)"))
+        .onHover(perform: confirmRevertOnHover(.folder(folderItem.name)))
     }
 
     /// Non-share files show for orientation only — no actions. This surface
@@ -429,7 +440,7 @@ struct ShareListView: View {
                 Text(file.name)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Text(ByteCountFormatter.string(fromByteCount: file.size, countStyle: .file))
+                Text(fileSize(file.size))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -445,7 +456,8 @@ struct ShareListView: View {
     @ViewBuilder
     private var content: some View {
         let browseRowsEmpty = store.visibleItems.isEmpty
-            && (store.showingArchive || (store.folders.isEmpty && store.looseFiles.isEmpty))
+            && (store.showingArchive
+                || (store.folders.isEmpty && store.looseFiles.isEmpty))
         if let error = store.errorMessage {
             placeholder(icon: "exclamationmark.triangle", text: error)
         } else if browseRowsEmpty && !store.loading {
@@ -499,6 +511,16 @@ struct ShareListView: View {
         }
     }
 
+    /// The app's one byte formatter for row/footer sizes.
+    private func fileSize(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+
+    /// "1 object" / "3 objects".
+    private func pluralCount(_ count: Int, _ singular: String) -> String {
+        "\(count) \(singular)\(count == 1 ? "" : "s")"
+    }
+
     /// Preview thumbnail; kind icon when there isn't one.
     private func thumbnail(url: URL?, kind: MediaKind?, side: CGFloat) -> some View {
         Group {
@@ -528,10 +550,10 @@ struct ShareListView: View {
         .buttonStyle(.borderless)
     }
 
-    private func deleteControls(id: String, help: String,
+    private func deleteControls(target: ConfirmTarget, help: String,
                                 perform: @escaping () -> Void) -> some View {
         Group {
-            if confirming == id {
+            if confirming == target {
                 HStack(spacing: 6) {
                     Button {
                         withAnimation { confirming = nil }
@@ -556,7 +578,7 @@ struct ShareListView: View {
             } else {
                 Button {
                     cancelRevert()
-                    withAnimation { confirming = id }
+                    withAnimation { confirming = target }
                 } label: {
                     Image(systemName: "trash")
                         .foregroundStyle(.secondary)
@@ -583,12 +605,12 @@ struct ShareListView: View {
 
     /// Hover handler for the view hosting the `id` confirm: entering pauses
     /// the pending revert, leaving arms it.
-    private func confirmRevertOnHover(_ id: String) -> (Bool) -> Void {
+    private func confirmRevertOnHover(_ target: ConfirmTarget) -> (Bool) -> Void {
         { hovering in
             if hovering {
-                if confirming == id { cancelRevert() }
-            } else if confirming == id {
-                scheduleRevert { if confirming == id { confirming = nil } }
+                if confirming == target { cancelRevert() }
+            } else if confirming == target {
+                scheduleRevert { if confirming == target { confirming = nil } }
             }
         }
     }
@@ -604,70 +626,77 @@ struct ShareListView: View {
             || state.highlightedID == item.id || dropTargeted
 
         return HStack(spacing: 8) {
-            checkbox(isOn: allSelected,
-                     mixed: selectedCount > 0 && !allSelected) {
-                if allSelected {
-                    selection.subtract(childKeys)
-                } else {
-                    selection.formUnion(childKeys)
-                }
-            }
-
-            if item.children.count > 1 {
-                Button {
-                    withAnimation {
-                        if expanded.contains(item.id) {
-                            expanded.remove(item.id)
-                        } else {
-                            expanded.insert(item.id)
-                            store.loadOrder(for: item)  // list order = page order
-                        }
+            // For collections, the expansion button is the entire existing
+            // 24-point gap between the checkbox and thumbnail. Keeping these
+            // three controls in a zero-spacing group makes that a real hit
+            // target instead of relying on negatively padded overflow.
+            HStack(spacing: item.children.count > 1 ? 0 : 8) {
+                checkbox(isOn: allSelected,
+                         mixed: selectedCount > 0 && !allSelected) {
+                    if allSelected {
+                        selection.subtract(childKeys)
+                    } else {
+                        selection.formUnion(childKeys)
                     }
-                } label: {
-                    Image(systemName: expanded.contains(item.id)
-                          ? "chevron.down" : "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        // Keep the glyph compact, but make all of the space
-                        // around it clickable instead of only the thin lines.
-                        .frame(width: 24, height: 30)
-                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.borderless)
-                .contentShape(Rectangle())
-                // The 24px hit box consumes the HStack's existing 8px gaps
-                // on each side instead of pushing neighboring content away.
-                .padding(.horizontal, -8)
-                .help(expanded.contains(item.id)
-                      ? "Collapse collection" : "Expand collection")
+
+                if item.children.count > 1 {
+                    Button {
+                        withAnimation {
+                            if expanded.contains(item.id) {
+                                expanded.remove(item.id)
+                            } else {
+                                expanded.insert(item.id)
+                            }
+                        }
+                    } label: {
+                        Image(systemName: expanded.contains(item.id)
+                              ? "chevron.down" : "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 24, height: 30)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .frame(width: 24, height: 30)
+                    .contentShape(Rectangle())
+                    .help(expanded.contains(item.id)
+                          ? "Collapse collection" : "Expand collection")
+                }
+
+                thumbnail(url: item.thumbURL, kind: item.kind, side: 30)
             }
 
-            thumbnail(url: item.thumbURL, kind: item.kind, side: 30)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.title)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                if let count = viewCount(for: item) {
-                    Text(metadata(for: item, viewCount: count))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .help("Page views in the last 31 days")
-                        .accessibilityLabel(metadataAccessibilityLabel(
-                            for: item, viewCount: count))
-                } else {
-                    Text(metadata(for: item, viewCount: nil))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-            .onTapGesture {
+            Button {
                 handleSelectionClick(rowID: item.id, keys: childKeys)
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.title)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    if let count = viewCount(for: item) {
+                        Text(metadata(for: item, viewCount: count))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .help("Page views in the last 31 days")
+                            .accessibilityLabel(metadataAccessibilityLabel(
+                                for: item, viewCount: count))
+                    } else {
+                        Text(metadata(for: item, viewCount: nil))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityValue(allSelected ? "Selected"
+                : selectedCount > 0 ? "Partially selected" : "Not selected")
+            .accessibilityHint("Selects or deselects this share")
 
             if !store.showingArchive {
                 Button {
@@ -695,7 +724,7 @@ struct ShareListView: View {
             .buttonStyle(.borderless)
             .help(store.showingArchive ? "Unarchive" : "Archive")
 
-            deleteControls(id: item.id, help: "Delete this share") {
+            deleteControls(target: .share(item.id), help: "Delete this share") {
                 if let highlighted = state.highlightedID,
                    highlighted == item.id || childKeys.contains(highlighted) {
                     clearHighlight()
@@ -724,7 +753,7 @@ struct ShareListView: View {
                                 fileURL: item.children.count == 1
                                     ? item.fileURL.absoluteString : nil)
             }))
-        .onHover(perform: confirmRevertOnHover(item.id))
+        .onHover(perform: confirmRevertOnHover(.share(item.id)))
     }
 
     private func viewCount(for item: ShareItem) -> Int64? {
@@ -740,8 +769,7 @@ struct ShareListView: View {
             let number = viewCount.formatted(.number.grouping(.automatic))
             parts.append("\(number) \(viewCount == 1 ? "view" : "views")")
         }
-        parts.append(ByteCountFormatter.string(
-            fromByteCount: item.size, countStyle: .file))
+        parts.append(fileSize(item.size))
         return parts.joined(separator: "  ·  ")
     }
 
@@ -750,8 +778,7 @@ struct ShareListView: View {
     ) -> String {
         let number = viewCount.formatted(.number.grouping(.automatic))
         let views = "\(number) page \(viewCount == 1 ? "view" : "views") in the last 31 days"
-        let size = ByteCountFormatter.string(
-            fromByteCount: item.size, countStyle: .file)
+        let size = fileSize(item.size)
         return "\(item.date.formatted(.relative(presentation: .named))), \(views), \(size)"
     }
 
@@ -760,7 +787,7 @@ struct ShareListView: View {
         let highlighted = selection.contains(child.key)
             || state.highlightedID == child.key || dropTargeted
         // Page link anchored to this file's <figure id> on the share page.
-        let anchoredPageURL = "\(item.pageURL.absoluteString)#\(child.name)"
+        let anchoredPageURL = "\(item.pageURL.absoluteString)#\(child.fileName)"
         return HStack(spacing: 8) {
             // Grip: drag to reorder within the collection. Dragging a checked
             // row moves the whole checked set.
@@ -796,22 +823,28 @@ struct ShareListView: View {
 
             thumbnail(url: child.thumbURL, kind: child.kind, side: 24)
 
-            VStack(alignment: .leading, spacing: 1) {
-                Text(child.name)
-                    .font(.callout)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Text(ByteCountFormatter.string(fromByteCount: child.size, countStyle: .file))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-            .onTapGesture {
+            Button {
                 handleSelectionClick(rowID: child.key, keys: [child.key])
+            } label: {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(child.name)
+                        .font(.callout)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Text(fileSize(child.size))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityValue(selection.contains(child.key)
+                ? "Selected" : "Not selected")
+            .accessibilityHint("Selects or deselects this file")
 
-            deleteControls(id: child.key, help: "Delete this file") {
+            deleteControls(target: .child(child.key), help: "Delete this file") {
                 if state.highlightedID == child.key { clearHighlight() }
                 selection.remove(child.key)
                 store.applyDeletion(full: [], partial: [(item, [child])])
@@ -865,7 +898,7 @@ struct ShareListView: View {
                                 pageURL: anchoredPageURL,
                                 fileURL: child.fileURL.absoluteString)
             }))
-        .onHover(perform: confirmRevertOnHover(child.key))
+        .onHover(perform: confirmRevertOnHover(.child(child.key)))
     }
 
     private var footer: some View {

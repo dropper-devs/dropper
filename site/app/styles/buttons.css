@@ -9,19 +9,22 @@
   font: 600 15px/1 var(--font);
   padding: 14px 26px;
   cursor: pointer;
-  transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
+  transition:
+    background 0.15s,
+    transform 0.15s,
+    box-shadow 0.15s;
 }
 
 .btn-primary {
   background: var(--accent);
   color: var(--accent-ink);
-  box-shadow: 0 8px 28px rgba(139, 156, 249, 0.28);
+  box-shadow: 0 8px 28px rgba(var(--accent-rgb), 0.28);
 }
 
 .btn-primary:hover {
   background: var(--accent-bright);
   transform: translateY(-1px);
-  box-shadow: 0 12px 34px rgba(139, 156, 249, 0.38);
+  box-shadow: 0 12px 34px rgba(var(--accent-rgb), 0.38);
 }
 
 .btn-ghost {

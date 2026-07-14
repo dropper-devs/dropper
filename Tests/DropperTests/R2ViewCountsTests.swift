@@ -3,6 +3,29 @@ import XCTest
 @testable import Dropper
 
 final class R2ViewCountsTests: XCTestCase {
+    private actor SuspensionGate {
+        private var started = false
+        private var startWaiters: [CheckedContinuation<Void, Never>] = []
+        private var releaseWaiter: CheckedContinuation<Void, Never>?
+
+        func suspend() async {
+            started = true
+            startWaiters.forEach { $0.resume() }
+            startWaiters.removeAll()
+            await withCheckedContinuation { releaseWaiter = $0 }
+        }
+
+        func waitUntilStarted() async {
+            guard !started else { return }
+            await withCheckedContinuation { startWaiters.append($0) }
+        }
+
+        func release() {
+            releaseWaiter?.resume()
+            releaseWaiter = nil
+        }
+    }
+
     private actor RequestRecorder {
         private(set) var requests: [URLRequest] = []
 
@@ -179,6 +202,30 @@ final class R2ViewCountsTests: XCTestCase {
         XCTAssertTrue(state.countsByPageKey.isEmpty)
         XCTAssertNil(state.lastError)
         XCTAssertNil(state.count(forPageKey: "share/a/index.html"))
+    }
+
+    @MainActor
+    func testResetInvalidatesAnInFlightAccessProbe() async {
+        let gate = SuspensionGate()
+        let response = #"{"data":{"viewer":{"accounts":[{"r2OperationsAdaptiveGroups":[]}]}}}"#
+        let api = R2ViewCountAPI { _ in
+            await gate.suspend()
+            return (Data(response.utf8), Self.response(200))
+        }
+        let state = ShareViewCountState(api: api)
+        let probe = Task {
+            await state.checkAccess(
+                accountID: "account", bucketName: "bucket", token: "token")
+        }
+
+        await gate.waitUntilStarted()
+        state.reset()
+        await gate.release()
+        _ = await probe.value
+
+        XCTAssertEqual(state.accessState, .unknown)
+        XCTAssertFalse(state.isLoading)
+        XCTAssertNil(state.lastError)
     }
 
     func testAccessProbeUsesOneRowLimit() async throws {

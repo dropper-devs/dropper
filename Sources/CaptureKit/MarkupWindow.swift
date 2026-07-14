@@ -21,25 +21,68 @@ public final class MarkupWindowController: NSWindowController, NSWindowDelegate 
     private let titleLabel = PassthroughTitleLabel(labelWithString: "")
     private enum ColorTarget { case stroke, fill }
     private var colorTarget: ColorTarget = .stroke
-    private var colorTargetControl: NSSegmentedControl?
     private var noFillButton: NSButton?
     private var strokeColorIndex = 0
     private var chosenFillColorIndex: Int?
 
-    private static let tools: [(tool: MarkupTool?, isCrop: Bool, symbol: String, tip: String)] = [
-        (nil, false, "cursorarrow", "Select / drag image"),
-        (nil, true, "crop", "Crop"),
-        (.arrow, false, "arrow.up.right", "Arrow"),
-        (.line, false, "line.diagonal", "Line"),
-        (.ellipse, false, "circle", "Ellipse"),
-        (.rect, false, "rectangle", "Rectangle"),
-        (.pen, false, "scribble", "Draw"),
-        (.text, false, "textformat", "Text"),
+    /// One slot in the tool rail. `pointer` and `crop` are the non-drawing
+    /// modes; `shape` carries the drawing tool it selects.
+    private enum ToolItem {
+        case pointer
+        case crop
+        case shape(MarkupTool)
+
+        var tool: MarkupTool? {
+            if case let .shape(tool) = self { return tool }
+            return nil
+        }
+
+        var isPointer: Bool {
+            if case .pointer = self { return true }
+            return false
+        }
+
+        var symbol: String {
+            switch self {
+            case .pointer: "cursorarrow"
+            case .crop: "crop"
+            case .shape(let tool):
+                switch tool {
+                case .arrow: "arrow.up.right"
+                case .line: "line.diagonal"
+                case .ellipse: "circle"
+                case .rect: "rectangle"
+                case .pen: "scribble"
+                case .text: "textformat"
+                }
+            }
+        }
+
+        var tip: String {
+            switch self {
+            case .pointer: "Select / drag image"
+            case .crop: "Crop"
+            case .shape(let tool):
+                switch tool {
+                case .arrow: "Arrow"
+                case .line: "Line"
+                case .ellipse: "Ellipse"
+                case .rect: "Rectangle"
+                case .pen: "Draw"
+                case .text: "Text"
+                }
+            }
+        }
+    }
+
+    private static let tools: [ToolItem] = [
+        .pointer, .crop, .shape(.arrow), .shape(.line),
+        .shape(.ellipse), .shape(.rect), .shape(.pen), .shape(.text),
     ]
 
-    /// Where the pointer sits in `tools` — the entry crop exit and the
-    /// initial selection return to. Keep in step with the array above.
-    private static let pointerToolIndex = 0
+    /// Where the pointer sits in `tools` — the crop exit and initial selection
+    /// return to it. Derived, so it can't drift from the array above.
+    private static let pointerToolIndex = tools.firstIndex { $0.isPointer } ?? 0
 
     public init(image: CGImage, scale: CGFloat, captureTitle: String,
                 onFinish: @escaping (MarkupExit) -> Void) {
@@ -178,36 +221,7 @@ public final class MarkupWindowController: NSWindowController, NSWindowDelegate 
         toolbar.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
         toolbar.translatesAutoresizingMaskIntoConstraints = false
 
-        let toolRail = NSStackView()
-        toolRail.orientation = .vertical
-        toolRail.alignment = .centerX
-        toolRail.spacing = 6
-        toolRail.translatesAutoresizingMaskIntoConstraints = false
-
-        for (index, entry) in Self.tools.enumerated() {
-            guard let symbol = NSImage(systemSymbolName: entry.symbol,
-                                       accessibilityDescription: entry.tip)
-            else { continue }
-            let large = symbol.withSymbolConfiguration(
-                NSImage.SymbolConfiguration(
-                    pointSize: Self.toolSymbolSize, weight: .regular
-                )) ?? symbol
-            let button = SquareToolbarButton(
-                image: large,
-                target: self, action: #selector(toolClicked(_:)))
-            button.setButtonType(.pushOnPushOff)
-            button.toolTip = entry.tip
-            button.tag = index
-            button.translatesAutoresizingMaskIntoConstraints = false
-            button.widthAnchor.constraint(equalToConstant: Self.toolButtonSize).isActive = true
-            button.heightAnchor.constraint(equalToConstant: Self.toolButtonSize).isActive = true
-            button.setContentHuggingPriority(.required, for: .horizontal)
-            button.setContentHuggingPriority(.required, for: .vertical)
-            button.setContentCompressionResistancePriority(.required, for: .horizontal)
-            button.setContentCompressionResistancePriority(.required, for: .vertical)
-            toolButtons.append(button)
-            toolRail.addArrangedSubview(button)
-        }
+        let toolRail = makeToolRail()
 
         let applyCrop = NSButton(title: "Apply Crop",
                                  target: self, action: #selector(applyCropClicked))
@@ -216,66 +230,18 @@ public final class MarkupWindowController: NSWindowController, NSWindowDelegate 
         applyCrop.heightAnchor.constraint(equalToConstant: 42).isActive = true
         cropApplyButton = applyCrop
         toolbar.addArrangedSubview(applyCrop)
-
         toolbar.setCustomSpacing(14, after: applyCrop)
 
-        let target = NSSegmentedControl(labels: ["Stroke", "Fill"],
-                                        trackingMode: .selectOne,
-                                        target: self,
-                                        action: #selector(colorTargetChanged(_:)))
-        target.selectedSegment = 0
-        target.toolTip = "Choose whether the palette edits the stroke or fill"
-        target.widthAnchor.constraint(equalToConstant: 104).isActive = true
-        target.heightAnchor.constraint(equalToConstant: 42).isActive = true
-        colorTargetControl = target
-        toolbar.addArrangedSubview(target)
-
-        let noFillSymbol = NSImage(systemSymbolName: "nosign",
-                                   accessibilityDescription: "No fill") ?? NSImage()
-        let noFill = NSButton(image: noFillSymbol,
-                              target: self, action: #selector(colorClicked(_:)))
-        noFill.bezelStyle = .texturedRounded
-        noFill.setButtonType(.pushOnPushOff)
-        noFill.toolTip = "No fill"
-        noFill.tag = -1
-        noFill.translatesAutoresizingMaskIntoConstraints = false
-        noFill.widthAnchor.constraint(equalToConstant: 38).isActive = true
-        noFill.heightAnchor.constraint(equalToConstant: 48).isActive = true
-        noFillButton = noFill
-        toolbar.addArrangedSubview(noFill)
-
-        for index in 0..<MarkupPalette.colors.count {
-            let button = NSButton(image: Self.swatchImage(colorIndex: index, selected: false),
-                                  target: self, action: #selector(colorClicked(_:)))
-            button.isBordered = false
-            button.tag = index
-            button.translatesAutoresizingMaskIntoConstraints = false
-            button.widthAnchor.constraint(equalToConstant: 38).isActive = true
-            button.heightAnchor.constraint(equalToConstant: 48).isActive = true
-            colorButtons.append(button)
-            toolbar.addArrangedSubview(button)
+        for control in makeColorControls() {
+            toolbar.addArrangedSubview(control)
         }
-
         if let lastSwatch = colorButtons.last {
             toolbar.setCustomSpacing(14, after: lastSwatch)
         }
 
-        let stroke = NSSlider(value: Double(MarkupPrefs.strokePoints),
-                              minValue: 1, maxValue: 12,
-                              target: self, action: #selector(strokeChanged(_:)))
-        stroke.toolTip = "Stroke width"
-        stroke.widthAnchor.constraint(equalToConstant: 110).isActive = true
-        toolbar.addArrangedSubview(stroke)
-
-        let size = NSPopUpButton(frame: .zero, pullsDown: false)
-        size.addItems(withTitles: ["Size: 100%", "Size: 75%", "Size: 50%"])
-        size.selectItem(at: 0)
-        size.target = self
-        size.action = #selector(sizeChanged(_:))
-        size.toolTip = "Output image size"
-        size.widthAnchor.constraint(equalToConstant: 108).isActive = true
-        size.heightAnchor.constraint(equalToConstant: 42).isActive = true
-        toolbar.addArrangedSubview(size)
+        for control in makeSizeControls() {
+            toolbar.addArrangedSubview(control)
+        }
 
         let spacer = NSView()
         spacer.setContentHuggingPriority(.init(1), for: .horizontal)
@@ -318,14 +284,114 @@ public final class MarkupWindowController: NSWindowController, NSWindowDelegate 
         window.contentView = content
     }
 
+    /// The vertical tool rail down the canvas's left edge; each button's tag
+    /// is its index into `tools`.
+    private func makeToolRail() -> NSStackView {
+        let toolRail = NSStackView()
+        toolRail.orientation = .vertical
+        toolRail.alignment = .centerX
+        toolRail.spacing = 6
+        toolRail.translatesAutoresizingMaskIntoConstraints = false
+
+        for (index, entry) in Self.tools.enumerated() {
+            guard let symbol = NSImage(systemSymbolName: entry.symbol,
+                                       accessibilityDescription: entry.tip)
+            else { continue }
+            let large = symbol.withSymbolConfiguration(
+                NSImage.SymbolConfiguration(
+                    pointSize: Self.toolSymbolSize, weight: .regular
+                )) ?? symbol
+            let button = SquareToolbarButton(
+                image: large,
+                target: self, action: #selector(toolClicked(_:)))
+            button.setButtonType(.pushOnPushOff)
+            button.toolTip = entry.tip
+            button.tag = index
+            button.translatesAutoresizingMaskIntoConstraints = false
+            button.widthAnchor.constraint(equalToConstant: Self.toolButtonSize).isActive = true
+            button.heightAnchor.constraint(equalToConstant: Self.toolButtonSize).isActive = true
+            button.setContentHuggingPriority(.required, for: .horizontal)
+            button.setContentHuggingPriority(.required, for: .vertical)
+            button.setContentCompressionResistancePriority(.required, for: .horizontal)
+            button.setContentCompressionResistancePriority(.required, for: .vertical)
+            toolButtons.append(button)
+            toolRail.addArrangedSubview(button)
+        }
+        return toolRail
+    }
+
+    /// Stroke/Fill target selector, the no-fill button, then one swatch per
+    /// palette color, in toolbar order. Populates `colorButtons`/`noFillButton`.
+    private func makeColorControls() -> [NSView] {
+        let target = NSSegmentedControl(labels: ["Stroke", "Fill"],
+                                        trackingMode: .selectOne,
+                                        target: self,
+                                        action: #selector(colorTargetChanged(_:)))
+        target.selectedSegment = 0
+        target.toolTip = "Choose whether the palette edits the stroke or fill"
+        target.widthAnchor.constraint(equalToConstant: 104).isActive = true
+        target.heightAnchor.constraint(equalToConstant: 42).isActive = true
+
+        let noFillSymbol = NSImage(systemSymbolName: "nosign",
+                                   accessibilityDescription: "No fill") ?? NSImage()
+        let noFill = NSButton(image: noFillSymbol,
+                              target: self, action: #selector(colorClicked(_:)))
+        noFill.bezelStyle = .texturedRounded
+        noFill.setButtonType(.pushOnPushOff)
+        noFill.toolTip = "No fill"
+        noFill.setAccessibilityLabel("No fill")
+        noFill.setAccessibilityRole(.radioButton)
+        noFill.tag = -1
+        noFill.translatesAutoresizingMaskIntoConstraints = false
+        noFill.widthAnchor.constraint(equalToConstant: 38).isActive = true
+        noFill.heightAnchor.constraint(equalToConstant: 48).isActive = true
+        noFillButton = noFill
+
+        var controls: [NSView] = [target, noFill]
+        for index in 0..<MarkupPalette.colors.count {
+            let button = NSButton(image: Self.swatchImage(colorIndex: index, selected: false),
+                                  target: self, action: #selector(colorClicked(_:)))
+            button.isBordered = false
+            button.setButtonType(.pushOnPushOff)
+            button.tag = index
+            button.setAccessibilityLabel(MarkupPalette.colors[index].name)
+            button.setAccessibilityRole(.radioButton)
+            button.translatesAutoresizingMaskIntoConstraints = false
+            button.widthAnchor.constraint(equalToConstant: 38).isActive = true
+            button.heightAnchor.constraint(equalToConstant: 48).isActive = true
+            colorButtons.append(button)
+            controls.append(button)
+        }
+        return controls
+    }
+
+    /// Stroke-width slider followed by the output-size popup, in toolbar order.
+    private func makeSizeControls() -> [NSView] {
+        let stroke = NSSlider(value: Double(MarkupPrefs.strokePoints),
+                              minValue: 1, maxValue: 12,
+                              target: self, action: #selector(strokeChanged(_:)))
+        stroke.toolTip = "Stroke width"
+        stroke.widthAnchor.constraint(equalToConstant: 110).isActive = true
+
+        let size = NSPopUpButton(frame: .zero, pullsDown: false)
+        size.addItems(withTitles: ["Size: 100%", "Size: 75%", "Size: 50%"])
+        size.selectItem(at: 0)
+        size.target = self
+        size.action = #selector(sizeChanged(_:))
+        size.toolTip = "Output image size"
+        size.widthAnchor.constraint(equalToConstant: 108).isActive = true
+        size.heightAnchor.constraint(equalToConstant: 42).isActive = true
+
+        return [stroke, size]
+    }
+
     private static let canvasInset: CGFloat = 22
 
     private static func swatchImage(colorIndex: Int, selected: Bool) -> NSImage {
         let side: CGFloat = 34
-        let color = MarkupPalette.colors[colorIndex]
         return NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
             let circle = NSBezierPath(ovalIn: rect.insetBy(dx: 3, dy: 3))
-            NSColor(srgbRed: color.red, green: color.green, blue: color.blue, alpha: 1).setFill()
+            MarkupPalette.nsColor(colorIndex).setFill()
             circle.fill()
             NSColor.tertiaryLabelColor.setStroke()
             circle.lineWidth = 1
@@ -350,15 +416,14 @@ public final class MarkupWindowController: NSWindowController, NSWindowDelegate 
         for button in toolButtons {
             button.state = button.tag == index ? .on : .off
         }
-        let entry = Self.tools[index]
-        if entry.isCrop {
+        if case .crop = Self.tools[index] {
             canvas.beginCropping()
             cropApplyButton?.isHidden = false
             cropApplyButton?.keyEquivalent = "\r"
             uploadButton?.keyEquivalent = ""
         } else {
             canvas.cancelCropping()
-            canvas.currentTool = entry.tool
+            canvas.currentTool = Self.tools[index].tool
             cropApplyButton?.isHidden = true
             cropApplyButton?.keyEquivalent = ""
             uploadButton?.keyEquivalent = "\r"
@@ -401,11 +466,26 @@ public final class MarkupWindowController: NSWindowController, NSWindowDelegate 
     private func refreshColorButtons() {
         let selected = colorTarget == .stroke ? strokeColorIndex : chosenFillColorIndex
         for button in colorButtons {
+            let isSelected = button.tag == selected
+            let wasSelected = button.state == .on
             button.image = Self.swatchImage(colorIndex: button.tag,
-                                            selected: button.tag == selected)
+                                            selected: isSelected)
+            button.state = isSelected ? .on : .off
+            button.setAccessibilityValue(NSNumber(value: isSelected))
+            if wasSelected != isSelected {
+                NSAccessibility.post(element: button, notification: .valueChanged)
+            }
         }
         noFillButton?.isEnabled = colorTarget == .fill
-        noFillButton?.state = colorTarget == .fill && chosenFillColorIndex == nil ? .on : .off
+        let noFillSelected = colorTarget == .fill && chosenFillColorIndex == nil
+        if let noFillButton {
+            let wasSelected = noFillButton.state == .on
+            noFillButton.state = noFillSelected ? .on : .off
+            noFillButton.setAccessibilityValue(NSNumber(value: noFillSelected))
+            if wasSelected != noFillSelected {
+                NSAccessibility.post(element: noFillButton, notification: .valueChanged)
+            }
+        }
     }
 
     @objc private func strokeChanged(_ sender: NSSlider) {

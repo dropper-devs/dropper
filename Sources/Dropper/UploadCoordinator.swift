@@ -2,6 +2,28 @@ import AppKit
 import UniformTypeIdentifiers
 import UserNotifications
 
+enum UploadPreparationError: LocalizedError {
+    case filePreparationFailed(String, String)
+
+    var errorDescription: String? {
+        switch self {
+        case let .filePreparationFailed(name, reason):
+            return "Could not prepare \(name): \(reason)"
+        }
+    }
+}
+
+enum UploadPipelineError: LocalizedError {
+    case cleanupFailed([String], String)
+
+    var errorDescription: String? {
+        switch self {
+        case let .cleanupFailed(keys, reason):
+            return "Upload failed and \(keys.count) partial object\(keys.count == 1 ? "" : "s") could not be cleaned up: \(reason)"
+        }
+    }
+}
+
 /// The upload engine: drop preparation (conversions, peaks, thumbnails),
 /// sequential PUTs with progress, manifest/page publication, cancellation
 /// with cleanup. Owns `busy` — one upload at a time.
@@ -40,7 +62,7 @@ final class UploadCoordinator {
     }
 
     private func run(batches: [[URL]], into existing: ShareItem?) {
-        guard !busy, let client, !batches.isEmpty else { return }
+        guard !busy, client != nil, let store, !batches.isEmpty else { return }
 
         busy = true
         // Existing-share drops keep their collection selected while the
@@ -50,7 +72,6 @@ final class UploadCoordinator {
         presentPopover()
         setIcon(0.001)
 
-        let existingNames = existing.map { Set($0.children.map(\.name)) } ?? []
         uploadTask = Task {
             var completed: [ShareResult] = []
             do {
@@ -58,30 +79,22 @@ final class UploadCoordinator {
                     let prefix = batches.count > 1
                         ? "(\(index + 1)/\(batches.count)) " : ""
                     if let result = try await processShare(
-                        client: client, urls: batch, existing: existing,
-                        existingNames: existingNames, labelPrefix: prefix,
+                        store: store, urls: batch, existing: existing,
+                        labelPrefix: prefix,
                         windowBase: Double(index) / Double(batches.count),
                         windowSpan: 1 / Double(batches.count)) {
                         completed.append(result)
                     }
                 }
                 if completed.isEmpty {
-                    await MainActor.run {
-                        self.busy = false
-                        self.uploadTask = nil
-                        self.state.strip = .idle
-                        self.setIcon(nil)
-                        self.notify("Dropper", "No supported files in that drop.")
-                    }
+                    self.resetToIdle()
+                    self.notify("Dropper", "No supported files in that drop.")
                     return
                 }
-                let results = completed
-                await MainActor.run { self.finish(results: results) }
+                self.finish(results: completed)
             } catch {
                 let wasCancelled = error.isCancellation
-                await MainActor.run {
-                    if wasCancelled { self.cancelled() } else { self.fail(error) }
-                }
+                if wasCancelled { self.cancelled() } else { self.fail(error) }
             }
         }
     }
@@ -93,8 +106,7 @@ final class UploadCoordinator {
     /// supported files. On cancellation, removes everything THIS share
     /// uploaded (earlier completed shares in the batch stay) and rethrows.
     private func processShare(
-        client: R2Client, urls: [URL], existing: ShareItem?,
-        existingNames: Set<String>, labelPrefix: String,
+        store: ShareStore, urls: [URL], existing: ShareItem?, labelPrefix: String,
         windowBase: Double, windowSpan: Double
     ) async throws -> ShareResult? {
         let show: @Sendable (String, Double) -> Void = { name, fraction in
@@ -105,27 +117,69 @@ final class UploadCoordinator {
                 self.setIcon(shown)
             }
         }
-        // Ring budget within the window: a video conversion, when one runs,
-        // owns 0...0.3 and uploads take 0.3...0.95; conversion-free drops
-        // keep the full range. The last 5% covers the manifest/page PUTs.
-        let prepared = try await Self.prepareFiles(
-            urls: urls, existingNames: existingNames) { name, fraction in
+        let progress: @Sendable (String, Double) -> Void = { name, fraction in
             show(labelPrefix + name, fraction * 0.3)
         }
-        let files = prepared.files
-        guard !files.isEmpty else { return nil }
-        defer {
-            for file in files where file.isTemporary {
-                try? FileManager.default.removeItem(at: file.sourceURL)
+
+        // Conversion and waveform work run OUTSIDE the share's mutation gate:
+        // a long transcode must never block refreshes or other mutations on
+        // the target share. Names are re-deduplicated against the manifest
+        // inside the gate, where they become final.
+        let prepared = try await Self.prepareFiles(
+            urls: urls, conversionProgress: progress)
+        guard let first = prepared.files.first else { return nil }
+        defer { Self.removeTemporaryFiles(prepared.files) }
+
+        if let existing {
+            return try await store.withShareMutation(id: existing.id) { client, keys in
+                let manifest = try await ShareCatalog.currentManifest(
+                    client: client, keys: keys)
+                let files = Self.deduplicated(
+                    prepared.files, existing: Set(manifest.items.map(\.file)))
+                return try await Self.uploadPrepared(
+                    (files, prepared.convertedVideo), manifest: manifest,
+                    shareID: existing.id, keys: keys, client: client,
+                    labelPrefix: labelPrefix, show: show)
             }
         }
 
-        let shareID = existing?.id ?? ShareNaming.shareID(firstFile: files[0].fileName)
-        let keys = ShareKeys(id: shareID, config: client.config)
+        let shareID = ShareNaming.shareID(firstFile: first.fileName)
+        return try await store.withShareMutation(id: shareID) { client, keys in
+            try await Self.uploadPrepared(
+                prepared, manifest: Manifest(items: []), shareID: shareID,
+                keys: keys, client: client, labelPrefix: labelPrefix,
+                show: show)
+        }
+    }
+
+    /// Re-deduplicates prepared filenames against an existing share's
+    /// manifest. `sanitizeAll` is idempotent on already-sanitized names, so
+    /// only genuine collisions pick up a numeric suffix.
+    private nonisolated static func deduplicated(
+        _ files: [UploadFile], existing: Set<String>
+    ) -> [UploadFile] {
+        let names = ShareNaming.sanitizeAll(
+            files.map(\.fileName),
+            existing: existing.union(ShareCatalog.reservedMediaFileNames))
+        return zip(files, names).map { file, name in
+            var copy = file
+            copy.fileName = name
+            return copy
+        }
+    }
+
+    private nonisolated static func uploadPrepared(
+        _ prepared: (files: [UploadFile], convertedVideo: Bool),
+        manifest baseManifest: Manifest, shareID: String, keys: ShareKeys,
+        client: R2Client, labelPrefix: String,
+        show: @escaping @Sendable (String, Double) -> Void
+    ) async throws -> ShareResult {
+        let files = prepared.files
         let totalBytes = max(files.reduce(Int64(0)) { $0 + $1.size }, 1)
         let uploadBase = prepared.convertedVideo ? 0.3 : 0.0
         var sentBytes: Int64 = 0
-        var uploadedKeys: [String] = []
+        var uploadedKeys = Set<String>()
+        var publishStarted = false
 
         do {
             for (index, file) in files.enumerated() {
@@ -133,8 +187,11 @@ final class UploadCoordinator {
                 let label = files.count == 1 ? file.displayName
                     : "\(file.displayName) (\(index + 1)/\(files.count))"
                 let base = sentBytes
+                let mediaKey = keys.media(file.fileName)
+                // Track before PUT: a lost response can still mean R2 stored it.
+                uploadedKeys.insert(mediaKey)
                 try await client.put(
-                    fileURL: file.sourceURL, key: keys.media(file.fileName),
+                    fileURL: file.sourceURL, key: mediaKey,
                     contentType: file.contentType,
                     cacheControl: "public, max-age=31536000, immutable"
                 ) { fraction in
@@ -143,7 +200,6 @@ final class UploadCoordinator {
                     show(labelPrefix + label,
                          uploadBase + overall * (0.95 - uploadBase))
                 }
-                uploadedKeys.append(keys.media(file.fileName))
                 sentBytes += file.size
             }
             try Task.checkCancellation()
@@ -154,40 +210,37 @@ final class UploadCoordinator {
                 try Task.checkCancellation()
                 if let jpeg = await Thumbnailer.jpegThumbnail(
                     of: file.sourceURL, kind: file.kind) {
+                    let thumbKey = keys.thumb(file.fileName)
+                    uploadedKeys.insert(thumbKey)
                     try await client.put(
-                        data: jpeg, key: keys.thumb(file.fileName),
+                        data: jpeg, key: thumbKey,
                         contentType: "image/jpeg",
                         cacheControl: "public, max-age=31536000, immutable")
-                    uploadedKeys.append(keys.thumb(file.fileName))
                 }
 
                 guard file.kind == .video else { continue }
                 let poster = await VideoPosterGenerator.jpegPoster(of: file.sourceURL)
                 try Task.checkCancellation()
                 guard let poster else { continue }
+                let posterKey = keys.poster(file.fileName)
+                uploadedKeys.insert(posterKey)
                 do {
                     try await client.put(
-                        data: poster, key: keys.poster(file.fileName),
+                        data: poster, key: posterKey,
                         contentType: "image/jpeg",
                         cacheControl: "public, max-age=31536000, immutable")
-                    uploadedKeys.append(keys.poster(file.fileName))
                     posters[file.fileName] = keys.posterName(file.fileName)
                 } catch {
-                    // A cosmetic preview should never sink an otherwise
+                    // A cosmetic preview must never sink an otherwise
                     // successful video share. Cancellation still stops the
                     // upload; other failures fall back to the small thumb.
                     if error.isCancellation { throw error }
+                    try? await client.delete(key: posterKey)
+                    uploadedKeys.remove(posterKey)
                     NSLog("Dropper poster upload failed for \(file.fileName): \(error)")
                 }
             }
-            // Manifest: fresh copy of the target share's (adds), or new.
-            var manifest: Manifest
-            if let existing {
-                manifest = await ShareStore.currentManifest(
-                    client: client, config: client.config, item: existing)
-            } else {
-                manifest = Manifest(items: [], thumb: nil)
-            }
+            var manifest = baseManifest
             manifest.items += files.map {
                 ManifestItem(file: $0.fileName, name: $0.displayName,
                              kind: $0.kind, size: $0.size, peaks: $0.peaks,
@@ -195,24 +248,40 @@ final class UploadCoordinator {
                              height: $0.dimensions?.height,
                              poster: posters[$0.fileName])
             }
-            if !posters.isEmpty { manifest.version = 2 }
             try Task.checkCancellation()
-            // Shielded from cancellation: manifest and page must land
-            // together, or an existing share's manifest could be torn.
-            let finalManifest = manifest
-            try await Task.detached {
-                try await ShareStore.publish(finalManifest, keys: keys, client: client)
-            }.value
-            let fileURL = finalManifest.items.count == 1 && files.count == 1
+            publishStarted = true
+            try await ShareCatalog.publish(manifest, keys: keys, client: client)
+            let fileURL = manifest.items.count == 1 && files.count == 1
                 ? keys.mediaURL(files[0].fileName) : nil
-            return ShareResult(shareID: shareID, title: finalManifest.title,
+            return ShareResult(shareID: shareID, title: manifest.title,
                                pageURL: keys.pageURL, fileURL: fileURL)
         } catch {
-            if error.isCancellation {
-                // User bailed: remove the partial share so nothing orphans.
-                for key in uploadedKeys {
-                    try? await client.delete(key: key)
+            // Before publication starts, every key whose PUT may have reached
+            // R2 is removed — the manifest never saw them, so the share stays
+            // consistent. Once publication has started, an EXISTING share's
+            // manifest may already reference the new media; deleting it would
+            // tear the live share, so the objects stay for the next publish.
+            // A brand-new share has no prior state to protect: everything it
+            // created, including a half-published page or manifest, goes.
+            let isNewShare = baseManifest.items.isEmpty
+            if publishStarted && !isNewShare { throw error }
+            var keysToDelete = uploadedKeys.sorted()
+            if publishStarted {
+                keysToDelete.append(keys.page)
+                keysToDelete.append(keys.manifest)
+            }
+            // Cleanup itself is shielded from cancellation.
+            let failedCleanup = await Task.detached {
+                var failed: [String] = []
+                for key in keysToDelete {
+                    do { try await client.delete(key: key) }
+                    catch { failed.append(key) }
                 }
+                return failed
+            }.value
+            if !failedCleanup.isEmpty {
+                throw UploadPipelineError.cleanupFailed(
+                    failedCleanup, error.localizedDescription)
             }
             throw error
         }
@@ -222,20 +291,27 @@ final class UploadCoordinator {
         uploadTask?.cancel()
     }
 
-    private func cancelled() {
+    /// Clears in-flight upload state back to idle chrome. Callers add their
+    /// own sound/notification.
+    private func resetToIdle() {
         busy = false
         uploadTask = nil
         state.strip = .idle
         setIcon(nil)
     }
 
+    private func cancelled() {
+        resetToIdle()
+    }
+
     /// Filters a drop to supported media files (no folders), converting HEIC,
     /// AIFF, and non-web-safe video when enabled. Runs off the main thread;
     /// video conversion is the slow one and drives `conversionProgress`
-    /// (label, 0...1 per file). Throws only on cancellation.
-    nonisolated private static func prepareFiles(
+    /// (label, 0...1 per file). Conversions are best-effort: when one fails,
+    /// the original file uploads as-is — a drop never dies over a conversion.
+    /// Only cancellation stops the pipeline.
+    nonisolated static func prepareFiles(
         urls: [URL],
-        existingNames: Set<String> = [],
         conversionProgress: @escaping @Sendable (String, Double) -> Void
     ) async throws -> (files: [UploadFile], convertedVideo: Bool) {
         let convertHEIC = ConfigStore.convertHEIC()
@@ -254,54 +330,83 @@ final class UploadCoordinator {
                 let kind = MediaKind.of(url)
 
                 let stem = url.deletingPathExtension().lastPathComponent
-                if kind == .image, convertHEIC, ImageConverter.isHEIC(url),
-                   let converted = ImageConverter.jpegCopy(of: url) {
-                    sources.append((converted, stem + ".jpg", .image, true))
-                } else if kind == .audio, convertAIFF, AudioConverter.isAIFF(url),
-                          let converted = AudioConverter.wavCopy(of: url) {
-                    sources.append((converted, stem + ".wav", .audio, true))
+                if kind == .image, convertHEIC, ImageConverter.isHEIC(url) {
+                    if let converted = ImageConverter.jpegCopy(of: url) {
+                        sources.append((converted, stem + ".jpg", .image, true))
+                    } else {
+                        NSLog("Dropper HEIC conversion failed for \(url.lastPathComponent); uploading the original")
+                        sources.append((url, url.lastPathComponent, kind, false))
+                    }
+                } else if kind == .audio, convertAIFF, AudioConverter.isAIFF(url) {
+                    do {
+                        let converted = try AudioConverter.wavCopy(of: url)
+                        sources.append((converted, stem + ".wav", .audio, true))
+                    } catch {
+                        if error.isCancellation { throw error }
+                        NSLog("Dropper AIFF conversion failed for \(url.lastPathComponent); uploading the original: \(error)")
+                        sources.append((url, url.lastPathComponent, kind, false))
+                    }
                 } else if kind == .video, convertMOV,
                           let plan = await VideoConverter.conversionPlan(for: url) {
                     convertedVideo = true
                     let label = "Converting \(url.lastPathComponent)…"
-                    if let converted = try await VideoConverter.mp4Copy(
-                        of: url, plan: plan,
-                        progress: { conversionProgress(label, $0) }) {
-                        sources.append((converted, stem + ".mp4", .video, true))
-                    } else {
+                    do {
+                        if let converted = try await VideoConverter.mp4Copy(
+                            of: url, plan: plan,
+                            progress: { conversionProgress(label, $0) }) {
+                            sources.append((converted, stem + ".mp4", .video, true))
+                        } else {
+                            NSLog("Dropper video conversion produced no file for \(url.lastPathComponent); uploading the original")
+                            sources.append((url, url.lastPathComponent, kind, false))
+                        }
+                    } catch {
+                        if error.isCancellation { throw error }
+                        NSLog("Dropper video conversion failed for \(url.lastPathComponent); uploading the original: \(error)")
                         sources.append((url, url.lastPathComponent, kind, false))
                     }
                 } else {
                     sources.append((url, url.lastPathComponent, kind, false))
                 }
             }
+
+            let fileNames = ShareNaming.sanitizeAll(
+                sources.map(\.name),
+                existing: ShareCatalog.reservedMediaFileNames)
+            var files: [UploadFile] = []
+            for (source, fileName) in zip(sources, fileNames) {
+                let attrs = try FileManager.default.attributesOfItem(
+                    atPath: source.url.path)
+                guard let size = (attrs[.size] as? NSNumber)?.int64Value else {
+                    throw UploadPreparationError.filePreparationFailed(
+                        source.name, "could not determine its size")
+                }
+                let contentType = UTType(filenameExtension: source.url.pathExtension)?
+                    .preferredMIMEType ?? "application/octet-stream"
+                files.append(UploadFile(
+                    sourceURL: source.url, fileName: fileName,
+                    displayName: source.name, kind: source.kind,
+                    contentType: contentType, size: size,
+                    isTemporary: source.temp,
+                    peaks: source.kind == .audio
+                        ? try AudioConverter.peaks(of: source.url) : nil,
+                    dimensions: source.kind == .video
+                        ? await VideoConverter.dimensions(of: source.url) : nil))
+            }
+            return (files, convertedVideo)
         } catch {
-            // Cancelled mid-preparation: temps made so far never reach the
-            // caller's cleanup defer, so remove them here.
+            // This covers conversion and the later metadata phase (including
+            // waveform cancellation), before the caller owns a cleanup defer.
             for source in sources where source.temp {
                 try? FileManager.default.removeItem(at: source.url)
             }
             throw error
         }
+    }
 
-        let fileNames = ShareNaming.sanitizeAll(sources.map(\.name), existing: existingNames)
-        var files: [UploadFile] = []
-        for (source, fileName) in zip(sources, fileNames) {
-            let attrs = try? FileManager.default.attributesOfItem(atPath: source.url.path)
-            let size = (attrs?[.size] as? Int64) ?? 0
-            let contentType = UTType(filenameExtension: source.url.pathExtension)?
-                .preferredMIMEType ?? "application/octet-stream"
-            files.append(UploadFile(
-                sourceURL: source.url, fileName: fileName,
-                displayName: source.name, kind: source.kind,
-                contentType: contentType, size: size,
-                isTemporary: source.temp,
-                peaks: source.kind == .audio
-                    ? AudioConverter.peaks(of: source.url) : nil,
-                dimensions: source.kind == .video
-                    ? await VideoConverter.dimensions(of: source.url) : nil))
+    private nonisolated static func removeTemporaryFiles(_ files: [UploadFile]) {
+        for file in files where file.isTemporary {
+            try? FileManager.default.removeItem(at: file.sourceURL)
         }
-        return (files, convertedVideo)
     }
 
     private func finish(results: [ShareResult]) {
@@ -322,21 +427,10 @@ final class UploadCoordinator {
     }
 
     private func fail(_ error: Error) {
-        busy = false
-        uploadTask = nil
-        state.strip = .idle
-        setIcon(nil)
+        resetToIdle()
         NSSound(named: "Basso")?.play()
         notify("Upload failed", error.localizedDescription)
         NSLog("Dropper upload failed: \(error)")
-    }
-}
-
-private extension Error {
-    /// Cancellation arrives two ways: CancellationError from Task checks, and
-    /// URLError.cancelled from a URLSession task torn down mid-flight.
-    var isCancellation: Bool {
-        self is CancellationError || (self as? URLError)?.code == .cancelled
     }
 }
 

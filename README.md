@@ -25,6 +25,100 @@ Website & download: [dropper.page](https://dropper.page)
 | `Makefile`, `build.conf`, `scripts/` | Local build and the release pipeline (build → sign → notarize → dmg → upload → tag) |
 | `tools/` | Build-time helpers (app icon generator) |
 
+## Share bundle format
+
+Every share is a self-contained folder in the configured R2 prefix. The
+folder name is a readable, sanitized version of the first filename followed by
+a random suffix. A single-file share and a collection use the same format.
+
+For example, a two-file collection might look like this:
+
+```text
+share/site/launch-demo-4adcb0b260c14b669777ab8c98f6772e/
+├── index.html
+├── manifest.json
+├── launch-demo.mp4
+├── notes.md
+├── .thumb.launch-demo.mp4.jpg
+├── .poster.launch-demo.mp4.jpg
+└── .pinned
+```
+
+The objects have distinct jobs:
+
+| Object | Purpose |
+| --- | --- |
+| `index.html` | The generated, static share page and public entry point. |
+| `manifest.json` | The authoritative list, order, display metadata, and ownership record for the share. |
+| `<filename>` | An uploaded media or document object. Filenames are sanitized and deduplicated within the share. |
+| `.thumb.<filename>.jpg` | Optional small preview used by the Dropper menu. |
+| `.poster.<filename>.jpg` | Optional larger video poster used by the generated share page. |
+| `.pinned` | Zero-byte marker indicating that the active share is pinned. |
+| `.archived` | Zero-byte marker indicating that the share is archived. |
+
+### Manifest
+
+`manifest.json` is the source of truth. Its item order is the collection order
+in both the app and `index.html`; changing the first item also changes the
+derived collection title. `file` is the sanitized R2 object name, while `name`
+preserves the original filename for display.
+
+```json
+{
+  "version": 2,
+  "items": [
+    {
+      "file": "launch-demo.mp4",
+      "name": "Launch Demo.mov",
+      "kind": "video",
+      "size": 18427392,
+      "width": 1920,
+      "height": 1080,
+      "poster": ".poster.launch-demo.mp4.jpg"
+    },
+    {
+      "file": "notes.md",
+      "name": "Notes.md",
+      "kind": "markdown",
+      "size": 1842
+    }
+  ]
+}
+```
+
+New manifests currently write `version: 2`. The app does not use that value as
+a compatibility gate, does not force an existing manifest to a newer version,
+and preserves the stored value when updating a collection. It still validates
+the manifest's filenames, unique membership, sizes, and poster paths before
+using it.
+
+Only a folder with a readable `manifest.json` is treated as a share. Other
+folders remain ordinary folders in the browser.
+
+### Pinning and archiving
+
+Pinning and archiving do not move or rewrite the share. They are represented by
+zero-byte marker objects, so the public URL and bundle contents remain stable:
+
+- Pinning creates `.pinned`; unpinning deletes it. A pin only changes ordering
+  in Dropper's active list.
+- Archiving creates `.archived` and removes `.pinned`. Unarchiving deletes
+  `.archived`. Archiving hides the share from the active list, but does not
+  disable its public page or media URLs.
+
+### Updating and deleting a collection
+
+Adding, reordering, or removing collection items updates `manifest.json` and
+regenerates `index.html` without changing the share URL. Dropper serializes
+mutations to the same share; the manifest is written first, the page follows,
+and removed media is deleted only after both land, so the live page never
+references a removed object.
+
+For a full share deletion, Dropper derives the owned object set only from a
+readable manifest and the known companion filenames above. It removes
+`index.html` first and `manifest.json` last, leaving any unrecognized objects
+in the folder untouched.
+
 ## Building from source
 
 Requires a recent Xcode toolchain on macOS 14 or later.
@@ -38,12 +132,6 @@ swift test      # run the test suite
 
 Plain `swift build` works too if you just want the executable without the
 app bundle.
-
-### Debug CLI
-
-The binary doubles as a headless debug tool that exercises the same client
-code as the UI — run it with `--list`, `--delete <id>`, `--verify-token
-<token>`, or `--convert-video <path>` (see `Sources/Dropper/CLI.swift`).
 
 ## Releasing
 

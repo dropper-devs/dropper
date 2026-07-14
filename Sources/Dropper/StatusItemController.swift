@@ -20,6 +20,7 @@ struct PopoverActions {
 
 /// Counts advertised file items without asking the drag source to materialize
 /// their URLs. The actual URLs are resolved once, only after a drop commits.
+@MainActor
 func advertisedFileCount(on pasteboard: NSPasteboard) -> Int {
     guard let items = pasteboard.pasteboardItems else {
         return pasteboard.availableType(from: [.fileURL]) == nil ? 0 : 1
@@ -29,6 +30,7 @@ func advertisedFileCount(on pasteboard: NSPasteboard) -> Int {
     }
 }
 
+@MainActor
 private func advertisedFileCount(in sender: NSDraggingInfo) -> Int {
     advertisedFileCount(on: sender.draggingPasteboard)
 }
@@ -46,21 +48,21 @@ private final class DropdownPanel: NSPanel {
     // methods, so these intentionally do not use `override`. Registered
     // SwiftUI row/strip views remain the concrete destinations; the panel is
     // the non-consuming fallback over the rest of the window.
-    func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+    @objc func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         onFileDragCount(advertisedFileCount(in: sender))
         return []
     }
 
-    func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+    @objc func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
         onFileDragCount(advertisedFileCount(in: sender))
         return []
     }
 
-    func draggingExited(_ sender: NSDraggingInfo?) {
+    @objc func draggingExited(_ sender: NSDraggingInfo?) {
         onFileDragCount(0)
     }
 
-    func draggingEnded(_ sender: NSDraggingInfo) {
+    @objc func draggingEnded(_ sender: NSDraggingInfo) {
         onFileDragCount(0)
         onFileDragEnded()
     }
@@ -122,6 +124,15 @@ struct ActiveDropTargets {
     }
 }
 
+/// Drop-target callbacks are not physical pointer truth: SwiftUI can remove a
+/// row destination during a refresh, and bare panel areas may reject a drag.
+/// A drag-opened panel must nevertheless stay visible while the user is still
+/// holding a mouse button with the pointer inside the panel.
+func shouldDeferDragClose(pressedMouseButtons: Int,
+                          pointerInsidePanel: Bool) -> Bool {
+    pressedMouseButtons != 0 && pointerInsidePanel
+}
+
 @MainActor
 final class StatusItemController: NSObject, NSWindowDelegate {
     static let dropdownSize = NSSize(width: 380, height: 575 + DropdownShape.beakHeight)
@@ -155,6 +166,7 @@ final class StatusItemController: NSObject, NSWindowDelegate {
     private var openedByDrag = false
     private var activeDropTargets = ActiveDropTargets()
     private var pendingDragClose: DispatchWorkItem?
+    private var pendingClientRebuild = false
     private let panelDropTargetID = "popover-window"
     private let iconDropTargetID = "status-icon"
 
@@ -162,7 +174,10 @@ final class StatusItemController: NSObject, NSWindowDelegate {
 
     private lazy var uploads: UploadCoordinator = {
         let coordinator = UploadCoordinator(state: state)
-        coordinator.setIcon = { [weak self] progress in self?.setIcon(progress: progress) }
+        coordinator.setIcon = { [weak self] progress in
+            self?.setIcon(progress: progress)
+            if progress == nil { self?.applyPendingClientRebuild() }
+        }
         coordinator.presentPopover = { [weak self] in self?.showPopover() }
         coordinator.notify = { [weak self] title, body in
             self?.notify(title: title, body: body)
@@ -185,7 +200,13 @@ final class StatusItemController: NSObject, NSWindowDelegate {
             button.image = Self.idleIcon
             let overlay = StatusDropView(frame: button.bounds)
             overlay.autoresizingMask = [.width, .height]
-            overlay.onDrop = { [weak self] urls in self?.handleDrop(urls: urls) }
+            overlay.onDrop = { [weak self] urls in
+                self?.handleDrop(urls: urls) ?? false
+            }
+            overlay.canAcceptDrop = { [weak self] in
+                guard let self else { return false }
+                return self.client != nil && !self.uploads.busy
+            }
             overlay.onClick = { [weak self] in self?.toggleList() }
             overlay.onRightClick = { [weak self] in self?.showContextMenu() }
             overlay.onDragEntered = { [weak self] count in
@@ -209,18 +230,43 @@ final class StatusItemController: NSObject, NSWindowDelegate {
     /// (Re)creates the client, store, and popover content from the stored
     /// configuration. Called at startup and after Settings changes.
     func rebuildClient() {
-        let config = ConfigStore.snapshot()
+        guard !uploads.busy else {
+            pendingClientRebuild = true
+            notify(title: "Dropper",
+                   body: "Your new settings will take effect when the current upload finishes.")
+            return
+        }
+        pendingClientRebuild = false
+        let oldClient = client
+        let credentials = ConfigStore.resolveCredentials()
+        var config: AppConfigSnapshot?
+        do {
+            config = try ConfigStore.validatedSnapshot()
+        } catch {
+            // A user who has connected a token deserves to know exactly why
+            // the app suddenly acts unconfigured — validation rules can
+            // tighten between releases.
+            config = nil
+            if credentials != nil {
+                notify(title: "Dropper",
+                       body: "Your saved settings are invalid — open Settings to fix them. \(error.localizedDescription)")
+            }
+        }
         viewCounts.reset()
-        client = ConfigStore.resolveCredentials()
-            .map { R2Client(credentials: $0, config: config) }
+        if let config, let credentials {
+            client = R2Client(credentials: credentials, config: config)
+        } else {
+            client = nil
+        }
         store = client.map { ShareStore(client: $0, viewCounts: viewCounts) }
         uploads.client = client
         uploads.store = store
+        oldClient?.invalidateAndCancel()
 
         let actions = PopoverActions(
             dropped: { [weak self] urls in self?.handleDrop(urls: urls) },
             droppedSeparately: { [weak self] urls in
-                self?.uploads.uploadSeparately(urls: urls)
+                self?.handleSeparateDrop(urls: urls)
             },
             droppedInto: { [weak self] urls, shareID in
                 self?.handleAddDrop(urls: urls, to: shareID)
@@ -261,6 +307,11 @@ final class StatusItemController: NSObject, NSWindowDelegate {
                 self.panel.invalidateShadow()
             }
         }
+    }
+
+    private func applyPendingClientRebuild() {
+        guard pendingClientRebuild, !uploads.busy else { return }
+        rebuildClient()
     }
 
     // MARK: - Popover
@@ -398,17 +449,30 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         }
     }
 
-    private func scheduleDragClose() {
+    private func scheduleDragClose(after delay: TimeInterval = 0.9) {
         guard openedByDrag, !uploads.busy, activeDropTargets.isEmpty else { return }
         pendingDragClose?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.openedByDrag, !self.uploads.busy,
                   self.activeDropTargets.isEmpty else { return }
+
+            // A destination can disappear beneath a stationary drag when the
+            // list refreshes, and the panel's bare areas are non-consuming.
+            // Neither means the user stopped hovering the open dropdown.
+            if shouldDeferDragClose(
+                pressedMouseButtons: NSEvent.pressedMouseButtons,
+                pointerInsidePanel: self.panel.frame.contains(NSEvent.mouseLocation)
+            ) {
+                self.pendingDragClose = nil
+                self.scheduleDragClose(after: 0.25)
+                return
+            }
+
             self.openedByDrag = false
             self.closePopover()
         }
         pendingDragClose = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
     /// A destination accepted the drop; provider resolution may still be
@@ -423,14 +487,48 @@ final class StatusItemController: NSObject, NSWindowDelegate {
 
     // MARK: - Upload
 
-    func handleDrop(urls: [URL]) {
+    @discardableResult
+    func handleDrop(urls: [URL]) -> Bool {
+        guard !urls.isEmpty else { return false }
+        guard client != nil else {
+            notify(title: "Dropper", body: "Run the Setup Wizard before uploading files.")
+            return false
+        }
+        guard !uploads.busy else {
+            notify(title: "Dropper", body: "An upload is already in progress.")
+            return false
+        }
         commitDrop()
         uploads.upload(urls: urls, into: nil)
+        return true
+    }
+
+    private func handleSeparateDrop(urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        guard client != nil else {
+            notify(title: "Dropper", body: "Run the Setup Wizard before uploading files.")
+            return
+        }
+        guard !uploads.busy else {
+            notify(title: "Dropper", body: "An upload is already in progress.")
+            return
+        }
+        commitDrop()
+        uploads.uploadSeparately(urls: urls)
     }
 
     /// Appends a row drop to that exact share. A stale/missing destination is
     /// rejected rather than silently creating an unrelated new share.
     func handleAddDrop(urls: [URL], to shareID: String) {
+        guard !urls.isEmpty else { return }
+        guard client != nil else {
+            notify(title: "Dropper", body: "Run the Setup Wizard before uploading files.")
+            return
+        }
+        guard !uploads.busy else {
+            notify(title: "Dropper", body: "An upload is already in progress.")
+            return
+        }
         commitDrop()
         guard let store, let target = store.shareForHighlight(shareID),
               !store.deletingIDs.contains(target.id) else {
@@ -474,7 +572,23 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         return image
     }
 
-    // MARK: - Settings
+    // MARK: - Window builders
+
+    /// Builds a titled window hosting a SwiftUI view with the chrome the app's
+    /// windows share. Positioning and presentation stay with the caller.
+    private func makeHostedWindow(
+        title: String, size: NSSize, styleMask: NSWindow.StyleMask,
+        minSize: NSSize, content: some View
+    ) -> NSWindow {
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: styleMask, backing: .buffered, defer: false)
+        window.title = title
+        window.contentView = NSHostingView(rootView: content)
+        window.contentMinSize = minSize
+        window.isReleasedWhenClosed = false
+        return window
+    }
 
     // MARK: - Onboarding
 
@@ -482,6 +596,11 @@ final class StatusItemController: NSObject, NSWindowDelegate {
     private var onboardingModel: OnboardingModel?
 
     func openOnboarding() {
+        guard !uploads.busy else {
+            notify(title: "Dropper",
+                   body: "Wait for the current upload to finish before running setup.")
+            return
+        }
         onboardingWindow?.close()
         let model = OnboardingModel()
         onboardingModel = model
@@ -496,17 +615,15 @@ final class StatusItemController: NSObject, NSWindowDelegate {
             })
         let availableHeight = (NSScreen.main?.visibleFrame.height ?? 740) - 40
         let contentHeight = min(700, max(500, availableHeight))
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: contentHeight),
+        let window = makeHostedWindow(
+            title: "Set Up Dropper",
+            size: NSSize(width: 520, height: contentHeight),
             styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
-            backing: .buffered, defer: false)
-        window.title = "Set Up Dropper"
+            minSize: NSSize(width: 500, height: 500),
+            content: view)
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.delegate = self
-        window.contentView = NSHostingView(rootView: view)
-        window.contentMinSize = NSSize(width: 500, height: 500)
-        window.isReleasedWhenClosed = false
         window.center()
         onboardingWindow = window
         window.makeKeyAndOrderFront(nil)
@@ -521,6 +638,8 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         onboardingWindow = nil
     }
 
+    // MARK: - Settings
+
     func openSettings() {
         // Fresh window each time so the fields re-read the stored config.
         settingsWindow?.close()
@@ -533,14 +652,14 @@ final class StatusItemController: NSObject, NSWindowDelegate {
             onViewCountsChanged: { [weak self] in
                 self?.store?.refreshViewCounts(force: true)
             },
-            onClose: { [weak self] in self?.settingsWindow?.close() })
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: contentHeight),
-            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        window.title = "Dropper Settings"
-        window.contentView = NSHostingView(rootView: view)
-        window.contentMinSize = NSSize(width: 460, height: min(520, contentHeight))
-        window.isReleasedWhenClosed = false
+            onClose: { [weak self] in self?.settingsWindow?.close() },
+            canSave: { [weak self] in self?.uploads.busy == false })
+        let window = makeHostedWindow(
+            title: "Dropper Settings",
+            size: NSSize(width: 460, height: contentHeight),
+            styleMask: [.titled, .closable, .resizable],
+            minSize: NSSize(width: 460, height: min(520, contentHeight)),
+            content: view)
         if let visible = targetScreen?.visibleFrame {
             let frame = window.frame
             window.setFrameOrigin(NSPoint(x: visible.midX - frame.width / 2,
@@ -627,7 +746,8 @@ final class StatusItemController: NSObject, NSWindowDelegate {
 /// Transparent overlay on the status item button: accepts file drops directly
 /// on the icon and forwards plain clicks to the controller.
 final class StatusDropView: NSView {
-    var onDrop: ([URL]) -> Void = { _ in }
+    var onDrop: ([URL]) -> Bool = { _ in false }
+    var canAcceptDrop: () -> Bool = { true }
     var onClick: () -> Void = {}
     var onRightClick: () -> Void = {}
     var onDragEntered: (Int) -> Void = { _ in }
@@ -637,12 +757,18 @@ final class StatusDropView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         registerForDraggedTypes([.fileURL])
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel("Dropper")
+        setAccessibilityHelp("Open Dropper, or drop files here to upload them.")
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        onDragEntered(advertisedFileCount(in: sender))
+        let count = advertisedFileCount(in: sender)
+        guard count > 0, canAcceptDrop() else { return [] }
+        onDragEntered(count)
         return .copy
     }
 
@@ -658,9 +784,8 @@ final class StatusDropView: NSView {
         let urls = sender.draggingPasteboard.readObjects(
             forClasses: [NSURL.self],
             options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
-        guard !urls.isEmpty else { return false }
-        onDrop(urls)
-        return true
+        guard !urls.isEmpty, canAcceptDrop() else { return false }
+        return onDrop(urls)
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -674,5 +799,10 @@ final class StatusDropView: NSView {
 
     override func rightMouseDown(with event: NSEvent) {
         onRightClick()
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        onClick()
+        return true
     }
 }

@@ -16,7 +16,8 @@ public enum CaptureError: LocalizedError {
         switch self {
         case .permissionDenied:
             "Screen Recording permission is required. Enable Dropper in "
-                + "System Settings > Privacy & Security > Screen Recording, then try again."
+                + "System Settings > Privacy & Security > Screen Recording, then quit and "
+                + "reopen Dropper."
         case .noDisplays:
             "No displays are available to capture."
         case .captureFailed:
@@ -41,7 +42,8 @@ public struct CaptureResult {
 public final class CaptureController: NSObject {
     private let displayOverlay = DisplaySelectionOverlay()
     private let areaOverlay = AreaSelectionOverlay()
-    private var pickerContinuation: CheckedContinuation<SCContentFilter?, Never>?
+    private var pickerContinuation: CheckedContinuation<Void, Error>?
+    private var pickerResult: SCContentFilter?
 
     public func capture(mode: CaptureMode) async throws -> CaptureResult? {
         guard Self.requestScreenRecordingAccessIfNeeded() else {
@@ -69,7 +71,7 @@ public final class CaptureController: NSObject {
         guard let target = selected else { return nil }
 
         let (display, filter) = try await Self.displayFilter(for: target)
-        let scale = max(target.screen.backingScaleFactor, 1)
+        let scale = max(target.scale, 1)
         let configuration = Self.stillConfiguration()
         configuration.width = max(1, Int((CGFloat(display.width) * scale).rounded(.up)))
         configuration.height = max(1, Int((CGFloat(display.height) * scale).rounded(.up)))
@@ -96,7 +98,7 @@ public final class CaptureController: NSObject {
         guard rect.width >= 1, rect.height >= 1 else { throw CaptureError.captureFailed }
 
         let (_, filter) = try await Self.displayFilter(for: selection.target)
-        let scale = max(selection.target.screen.backingScaleFactor, 1)
+        let scale = max(selection.target.scale, 1)
         let pixels = AreaSelectionGeometry.pixelSize(for: rect, scale: scale)
         let configuration = Self.stillConfiguration()
         configuration.sourceRect = rect
@@ -110,7 +112,8 @@ public final class CaptureController: NSObject {
     // MARK: - Window
 
     private func captureWindow() async throws -> CaptureResult? {
-        let picked: SCContentFilter? = await withCheckedContinuation { continuation in
+        try await withCheckedThrowingContinuation { continuation in
+            pickerResult = nil
             pickerContinuation = continuation
             let picker = SCContentSharingPicker.shared
             var configuration = SCContentSharingPickerConfiguration()
@@ -123,7 +126,8 @@ public final class CaptureController: NSObject {
             picker.add(self)
             picker.present(using: .window)
         }
-        guard let filter = picked else { return nil }
+        guard let filter = pickerResult else { return nil }
+        pickerResult = nil
 
         let info = SCShareableContent.info(for: filter)
         let rect = info.contentRect.isEmpty ? filter.contentRect : info.contentRect
@@ -177,12 +181,21 @@ public final class CaptureController: NSObject {
             + abs(lhs.width - rhs.width) + abs(lhs.height - rhs.height)
     }
 
-    private func resolvePicker(with filter: SCContentFilter?) {
+    /// Single exit for the window picker: tears down the picker observer and
+    /// resumes the waiting continuation, throwing when `error` is non-nil.
+    private func finishPicker(result: SCContentFilter?, error: Error?) {
+        guard let continuation = pickerContinuation else { return }
+        pickerContinuation = nil
         let picker = SCContentSharingPicker.shared
         picker.remove(self)
         picker.isActive = false
-        pickerContinuation?.resume(returning: filter)
-        pickerContinuation = nil
+        if let error {
+            pickerResult = nil
+            continuation.resume(throwing: error)
+        } else {
+            pickerResult = result
+            continuation.resume()
+        }
     }
 
     // MARK: - ScreenCaptureKit
@@ -196,7 +209,8 @@ public final class CaptureController: NSObject {
             let captureTitle = screens.count == 1 ? "Desktop" : "Desktop \(index + 1)"
             return DisplaySelectionOverlay.Target(
                 id: CGDirectDisplayID(number.uint32Value),
-                screen: screen,
+                frame: screen.frame,
+                scale: screen.backingScaleFactor,
                 title: screen.localizedName,
                 subtitle: captureTitle,
                 captureTitle: captureTitle
@@ -260,17 +274,27 @@ extension CaptureController: SCContentSharingPickerObserver {
     nonisolated public func contentSharingPicker(
         _ picker: SCContentSharingPicker, didCancelFor stream: SCStream?
     ) {
-        Task { @MainActor in self.resolvePicker(with: nil) }
+        Task { @MainActor in self.finishPicker(result: nil, error: nil) }
     }
 
     nonisolated public func contentSharingPicker(
         _ picker: SCContentSharingPicker, didUpdateWith filter: SCContentFilter,
         for stream: SCStream?
     ) {
-        Task { @MainActor in self.resolvePicker(with: filter) }
+        let selected = PickerFilter(filter)
+        Task { @MainActor in self.finishPicker(result: selected.value, error: nil) }
     }
 
     nonisolated public func contentSharingPickerStartDidFailWithError(_ error: Error) {
-        Task { @MainActor in self.resolvePicker(with: nil) }
+        Task { @MainActor in self.finishPicker(result: nil, error: error) }
     }
+}
+
+/// ScreenCaptureKit does not declare `SCContentFilter` Sendable, even though
+/// the picker hands ownership of this immutable selection to its observer.
+/// The box crosses only into the main actor, where Dropper keeps using it.
+private struct PickerFilter: @unchecked Sendable {
+    let value: SCContentFilter
+
+    init(_ value: SCContentFilter) { self.value = value }
 }

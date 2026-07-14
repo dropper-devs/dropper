@@ -6,7 +6,12 @@ import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const out = join(dirname(fileURLToPath(import.meta.url)), "..", "public", "og.png");
+const out = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "public",
+  "og.png",
+);
 
 // Deterministic waveform bars, mirroring the site mockup.
 const bars = Array.from({ length: 48 }, (_, i) => {
@@ -28,7 +33,8 @@ const waveSvg = bars
   .map((p, i) => {
     const h = (p / 100) * 90;
     const x = waveX + i * (barWidth + gap);
-    const fill = (i + 0.5) / bars.length <= played ? "#8b9cf9" : "rgba(255,255,255,0.20)";
+    const fill =
+      (i + 0.5) / bars.length <= played ? "#8b9cf9" : "rgba(255,255,255,0.20)";
     return `<rect x="${x}" y="${waveMidY - h / 2}" width="${barWidth}" height="${h}" rx="2" fill="${fill}"/>`;
   })
   .join("\n");

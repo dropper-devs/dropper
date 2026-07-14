@@ -4,7 +4,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "Privacy",
   description:
-    "Dropper's privacy policy: your files go to your own bucket, with limited website analytics and optional email updates.",
+    "Dropper's privacy policy: your files go to your own bucket, with limited website analytics.",
 };
 
 export default function Privacy() {
@@ -31,12 +31,12 @@ export default function Privacy() {
         </li>
         <li>
           The app contains no analytics, telemetry, tracking, or crash
-          reporting. It makes network requests only to Cloudflare endpoints
-          for your own account.
+          reporting. It makes network requests only to Cloudflare endpoints for
+          your own account.
         </li>
         <li>
-          Share links include a random suffix so they are not guessable.
-          Anyone you give a link to can open it — treat links like the files
+          Share links include a random suffix so they are not guessable. Anyone
+          you give a link to can open it — treat links like the files
           themselves.
         </li>
       </ul>
@@ -46,22 +46,10 @@ export default function Privacy() {
         <li>
           When configured, we use Mixpanel to understand page views and link
           clicks. It may receive the page URL, referrer, campaign parameters,
-          and the destination and text of links you click. Mixpanel uses
-          browser local storage to recognize repeat visits.
+          and the destination and text of links you click. Mixpanel uses browser
+          local storage to recognize repeat visits.
         </li>
-        <li>
-          We do not run ads or sell analytics or subscriber data.
-        </li>
-        <li>
-          If you submit your email in the “Get updates” form, we store that
-          address (and the time you submitted it) so we can send you release
-          announcements. Nothing else is collected, and the address is never
-          shared or sold.
-        </li>
-        <li>
-          To be removed from the list, reply to any update email or contact
-          us and we&apos;ll delete your address.
-        </li>
+        <li>We do not run ads or sell analytics data.</li>
       </ul>
 
       <p style={{ marginTop: 40 }}>
