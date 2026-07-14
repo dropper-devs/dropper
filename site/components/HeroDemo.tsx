@@ -9,7 +9,7 @@
  *  - row + master checkboxes with the app's square / minus.square.fill /
  *    checkmark.square.fill states and an "N selected" caption
  *  - trash → inline ✕/✓ confirm pair with the app's ~1s hover-away revert;
- *    per-row circle-X → inline ✓/✕ pair, same grace period
+ *    per-row trash → inline ✓/✕ pair, same grace period
  *  - archive-selected + per-row archive (instant, non-destructive), archive
  *    view toggle (accent when active), unarchive from the archive view
  *  - live footer arithmetic ("<size> · N items · M archived") and the app's
@@ -574,6 +574,16 @@ export default function HeroDemo() {
                 {masterIcon}
               </button>
 
+              <button
+                type="button"
+                className="mock-tbtn"
+                aria-label={showingArchive ? "Unarchive selected" : "Archive selected"}
+                disabled={list.selected.length === 0}
+                onClick={() => archiveRows(list.selected, !showingArchive)}
+              >
+                {showingArchive ? icons.trayUp : icons.archive}
+              </button>
+
               {confirming === "bulk" ? (
                 <span className="confirm-pair" onMouseEnter={cancelRevert} onMouseLeave={armRevert}>
                   <button
@@ -607,16 +617,6 @@ export default function HeroDemo() {
                   {icons.trash}
                 </button>
               )}
-
-              <button
-                type="button"
-                className="mock-tbtn"
-                aria-label={showingArchive ? "Unarchive selected" : "Archive selected"}
-                disabled={list.selected.length === 0}
-                onClick={() => archiveRows(list.selected, !showingArchive)}
-              >
-                {showingArchive ? icons.trayUp : icons.archive}
-              </button>
 
               {list.selected.length > 0 ? <span className="selcount">{list.selected.length} selected</span> : null}
 
@@ -826,7 +826,7 @@ function ListRow({
     <div className={`mock-lrow${highlighted ? " hl" : ""}${entering ? " enter" : ""}`}>
       <button
         type="button"
-        className={`ric${selected ? " on" : ""}`}
+        className={`ric select-control${selected ? " on" : ""}`}
         aria-label={`Select ${rowTitle(id)}`}
         aria-pressed={selected}
         onClick={onSelect}
@@ -869,7 +869,7 @@ function ListRow({
         </span>
       ) : (
         <button type="button" className="ric" aria-label={`Delete ${rowTitle(id)}`} onClick={onDeleteAsk}>
-          {icons.xCircle}
+          {icons.trash}
         </button>
       )}
     </div>

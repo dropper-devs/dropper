@@ -1,7 +1,10 @@
 import SwiftUI
+import AppKit
 
 /// Settings: paste a Cloudflare API token once, pick the bucket/folder, done.
 struct SettingsView: View {
+    @ObservedObject var viewCounts: ShareViewCountState
+
     // Editable copies; persisted only on Save.
     @State private var token = ""
     @State private var tokenStatus: String?
@@ -20,17 +23,25 @@ struct SettingsView: View {
     @State private var convertHEIC = ConfigStore.convertHEIC()
     @State private var convertAIFF = ConfigStore.convertAIFF()
     @State private var convertMOV = ConfigStore.convertMOV()
+    @State private var hasStoredAnalyticsToken = Keychain.loadAnalyticsToken() != nil
+    @State private var showingViewCountSetup = false
 
     let onSave: () -> Void
+    let onViewCountsChanged: () -> Void
     let onClose: () -> Void
 
-    init(onSave: @escaping () -> Void, onClose: @escaping () -> Void) {
+    init(viewCounts: ShareViewCountState,
+         onSave: @escaping () -> Void,
+         onViewCountsChanged: @escaping () -> Void,
+         onClose: @escaping () -> Void) {
         let snapshot = ConfigStore.snapshot()
+        _viewCounts = ObservedObject(wrappedValue: viewCounts)
         _accountID = State(initialValue: snapshot.accountID)
         _bucket = State(initialValue: snapshot.bucket)
         _prefix = State(initialValue: snapshot.prefix)
         _publicBase = State(initialValue: snapshot.publicBase)
         self.onSave = onSave
+        self.onViewCountsChanged = onViewCountsChanged
         self.onClose = onClose
     }
 
@@ -41,6 +52,8 @@ struct SettingsView: View {
                     tokenSection
                     Divider()
                     fieldsSection
+                    Divider()
+                    viewCountsSection
                     Divider()
                     conversionsSection
                     Divider()
@@ -62,6 +75,15 @@ struct SettingsView: View {
             .padding(.vertical, 14)
         }
         .frame(minWidth: 460, minHeight: 0)
+        .sheet(isPresented: $showingViewCountSetup) {
+            ViewCountSetupSheet(
+                accountID: accountID.trimmingCharacters(in: .whitespaces),
+                bucketName: bucket.trimmingCharacters(in: .whitespaces),
+                onEnabled: viewCountsEnabled)
+        }
+        .task {
+            await checkViewCountAccess()
+        }
     }
 
     // MARK: - Token
@@ -106,6 +128,11 @@ struct SettingsView: View {
                 }
                 tokenStatus = status
                 token = ""
+                viewCounts.reset()
+                await checkViewCountAccess(force: true)
+                if viewCounts.accessState == .available {
+                    onViewCountsChanged()
+                }
             } catch {
                 tokenStatus = "Failed: \(error.localizedDescription)"
             }
@@ -130,6 +157,133 @@ struct SettingsView: View {
             }
         }
         .font(.callout)
+    }
+
+    // MARK: - View Counts
+
+    private var viewCountsSection: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("View Counts").font(.headline)
+            Text("See page views from the last 31 days beside each share.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if !hasStoredToken && !hasStoredAnalyticsToken {
+                Text("Connect your Cloudflare token before enabling view counts.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            } else if viewCounts.isLoading && viewCounts.accessState == .unknown {
+                HStack(spacing: 7) {
+                    ProgressView().controlSize(.small)
+                    Text("Checking your Cloudflare token…")
+                }
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            } else {
+                viewCountAccessStatus
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var viewCountAccessStatus: some View {
+        switch viewCounts.accessState {
+        case .unknown:
+            HStack(spacing: 7) {
+                ProgressView().controlSize(.small)
+                Text("Checking your Cloudflare token…")
+            }
+            .font(.callout)
+            .foregroundStyle(.secondary)
+
+        case .available:
+            Label("Enabled", systemImage: "checkmark.circle.fill")
+                .font(.callout.weight(.medium))
+                .foregroundStyle(.green)
+            Text(hasStoredAnalyticsToken
+                 ? "Using a separate read-only Cloudflare token."
+                 : "Your existing Cloudflare token includes analytics access.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if hasStoredAnalyticsToken {
+                HStack {
+                    Button("Replace Token…") { showingViewCountSetup = true }
+                    Button("Remove Token", role: .destructive) {
+                        removeAnalyticsToken()
+                    }
+                }
+            }
+
+        case .permissionRequired:
+            if hasStoredAnalyticsToken {
+                Text("The saved analytics token no longer has access.")
+                    .font(.callout)
+                Button("Replace Token…") { showingViewCountSetup = true }
+            } else {
+                Text("Your current Cloudflare token doesn’t include analytics access.")
+                    .font(.callout)
+                Text("Add a separate read-only token to enable view counts.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("Enable View Counts…") { showingViewCountSetup = true }
+            }
+
+        case .authenticationFailed:
+            if hasStoredAnalyticsToken {
+                Text("The saved analytics token is no longer valid.")
+                    .font(.callout)
+                Button("Replace Token…") { showingViewCountSetup = true }
+            } else {
+                Text("Cloudflare couldn’t verify the current token.")
+                    .font(.callout)
+                Button("Try Again") { retryViewCountAccess() }
+            }
+
+        case .temporarilyUnavailable:
+            Text("Cloudflare couldn’t be reached. Dropper will try again automatically.")
+                .font(.callout)
+            Button("Try Again") { retryViewCountAccess() }
+        }
+    }
+
+    private func analyticsToken() -> String? {
+        Keychain.loadAnalyticsToken() ?? Keychain.loadToken()
+    }
+
+    private func checkViewCountAccess(force: Bool = false) async {
+        guard force || viewCounts.accessState == .unknown else { return }
+        guard !viewCounts.isLoading, let token = analyticsToken() else { return }
+        await viewCounts.checkAccess(
+            accountID: accountID.trimmingCharacters(in: .whitespaces),
+            bucketName: bucket.trimmingCharacters(in: .whitespaces),
+            token: token)
+    }
+
+    private func retryViewCountAccess() {
+        Task {
+            await checkViewCountAccess(force: true)
+            if viewCounts.accessState == .available {
+                onViewCountsChanged()
+            }
+        }
+    }
+
+    private func viewCountsEnabled() {
+        hasStoredAnalyticsToken = true
+        viewCounts.reset()
+        onViewCountsChanged()
+    }
+
+    private func removeAnalyticsToken() {
+        Keychain.deleteAnalyticsToken()
+        hasStoredAnalyticsToken = false
+        viewCounts.reset()
+        Task {
+            await checkViewCountAccess(force: true)
+            if viewCounts.accessState == .available {
+                onViewCountsChanged()
+            }
+        }
     }
 
     private var conversionsSection: some View {
@@ -283,5 +437,116 @@ struct SettingsView: View {
         d.set(convertMOV, forKey: ConfigStore.keys.convertMOV)
         onSave()
         onClose()
+    }
+}
+
+/// Optional post-setup flow. Cloudflare pre-fills the one read-only
+/// permission; the person still reviews and creates the token themselves.
+private struct ViewCountSetupSheet: View {
+    private static let tokenPage = URL(string:
+        "https://dash.cloudflare.com/?to=/:account/api-tokens"
+        + "&permissionGroupKeys=%5B%7B%22key%22%3A%22account_analytics%22%2C%22type%22%3A%22read%22%7D%5D"
+        + "&name=Dropper%20View%20Counts")!
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var token = ""
+    @State private var checking = false
+    @State private var errorMessage: String?
+
+    let accountID: String
+    let bucketName: String
+    let onEnabled: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Enable View Counts")
+                .font(.title2.weight(.semibold))
+
+            Text("Dropper needs a separate Cloudflare token with read-only access to Account Analytics. It cannot upload, change, or delete anything.")
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("1. Open Cloudflare and create the preconfigured token.")
+                Text("2. Select your account, then create the token.")
+                Text("3. Copy the token once and paste it below.")
+            }
+            .font(.callout)
+
+            Button("Open Cloudflare Token Page") {
+                NSWorkspace.shared.open(Self.tokenPage)
+            }
+
+            SecureField("Analytics token", text: $token)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityLabel("Cloudflare analytics token")
+
+            if checking {
+                HStack(spacing: 7) {
+                    ProgressView().controlSize(.small)
+                    Text("Checking analytics access…")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            } else if let errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .disabled(checking)
+                Button("Verify & Enable") { verify() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(checking
+                              || token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(20)
+        .frame(width: 480)
+        .interactiveDismissDisabled(checking)
+    }
+
+    private func verify() {
+        let candidate = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !candidate.isEmpty, !checking else { return }
+        checking = true
+        errorMessage = nil
+
+        Task {
+            do {
+                try await R2ViewCountAPI().checkAccess(
+                    accountID: accountID,
+                    bucketName: bucketName,
+                    token: candidate)
+                Keychain.saveAnalyticsToken(candidate)
+                token = ""
+                checking = false
+                onEnabled()
+                dismiss()
+            } catch is CancellationError {
+                checking = false
+            } catch let error as R2ViewCountError {
+                checking = false
+                switch error {
+                case .permissionDenied:
+                    errorMessage = "This token doesn’t have Account Analytics: Read access to this account."
+                case .authenticationFailed:
+                    errorMessage = "Cloudflare didn’t accept this token. Paste the token value shown after creation."
+                case .transient:
+                    errorMessage = "Couldn’t reach Cloudflare. Your token hasn’t been saved; try again."
+                case .api, .invalidResponse:
+                    errorMessage = "Cloudflare couldn’t verify analytics access. Your token hasn’t been saved."
+                }
+            } catch {
+                checking = false
+                errorMessage = "Cloudflare couldn’t verify analytics access. Your token hasn’t been saved."
+            }
+        }
     }
 }

@@ -197,7 +197,9 @@
   width: 15px;
   height: 15px;
   flex: none;
-  display: inline-flex;
+  display: inline-grid;
+  place-items: center;
+  line-height: 0;
 }
 
 .mock-ticon svg {
@@ -264,16 +266,19 @@
 }
 
 .mock-lrow .ric {
-  width: 13px;
-  height: 13px;
+  width: 16px;
+  height: 16px;
   flex: none;
-  display: inline-flex;
-  color: var(--text-faint);
+  display: inline-grid;
+  place-items: center;
+  line-height: 0;
+  color: var(--text-dim);
 }
 
 .mock-lrow .ric svg {
-  width: 100%;
-  height: 100%;
+  display: block;
+  width: 15px;
+  height: 15px;
 }
 
 
@@ -412,20 +417,30 @@
 
 /* toolbar / row icon buttons (borderless, like the app) */
 .mock-tbtn {
-  display: inline-flex;
-  width: 15px;
-  height: 15px;
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
   flex: none;
   padding: 0;
   border: 0;
   background: none;
   color: var(--text-dim);
   cursor: pointer;
+  line-height: 0;
 }
 
 .mock-tbtn svg {
-  width: 100%;
-  height: 100%;
+  display: block;
+  width: 15px;
+  height: 15px;
+}
+
+/* The custom trash path sits optically low beside the SF-symbol-style
+   archive glyph. Lift the drawing, not its button, so every row stays on the
+   same geometric baseline and the visible icons align. */
+.mock-dropdown svg.icon-trash {
+  transform: translateY(-1px);
 }
 
 .mock-tbtn:not(:disabled):hover {
@@ -442,7 +457,7 @@
   color: var(--accent);
 }
 
-/* inline confirm pair (replaces trash / circle-X, like the app) */
+/* inline confirm pair (replaces the trash button, like the app) */
 .confirm-pair {
   display: inline-flex;
   align-items: center;
@@ -502,8 +517,9 @@ button.ric:hover {
   color: var(--text-dim);
 }
 
-.mock-lrow .ric.on {
-  color: var(--accent);
+.mock-lrow .select-control,
+.mock-lrow .select-control.on {
+  color: var(--text);
 }
 
 /* empty states, centered in the reserved list area */

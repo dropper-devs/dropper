@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct ShareListView: View {
     @ObservedObject var store: ShareStore
     @ObservedObject var state: UIState
+    @ObservedObject private var viewCounts: ShareViewCountState
     let actions: PopoverActions
     @State private var selection = Set<String>()    // selected child KEYS
     @State private var selectionAnchor: String?      // row id of the last click
@@ -26,6 +27,13 @@ struct ShareListView: View {
     /// and folder confirm ids are prefixed "folder:".
     private static let bulkConfirmID = "bulk"
     private static let popoverDropToken = "popover-surface"
+
+    init(store: ShareStore, state: UIState, actions: PopoverActions) {
+        self.store = store
+        self.state = state
+        _viewCounts = ObservedObject(wrappedValue: store.viewCounts)
+        self.actions = actions
+    }
 
     private var allLeafKeys: Set<String> {
         Set(store.visibleItems.flatMap { $0.children.map(\.key) })
@@ -195,6 +203,18 @@ struct ShareListView: View {
             .disabled(store.visibleItems.isEmpty)
             .help("Select all")
 
+            // Archive (or unarchive) every share with a selected file —
+            // non-destructive, so no confirm step.
+            Button {
+                archiveSelected()
+            } label: {
+                Image(systemName: store.showingArchive
+                      ? "tray.and.arrow.up" : "archivebox")
+            }
+            .buttonStyle(.borderless)
+            .disabled(selection.isEmpty)
+            .help(store.showingArchive ? "Unarchive selected" : "Archive selected")
+
             if confirming == Self.bulkConfirmID {
                 HStack(spacing: 8) {
                     Button {
@@ -224,23 +244,12 @@ struct ShareListView: View {
                     withAnimation { confirming = Self.bulkConfirmID }
                 } label: {
                     Image(systemName: "trash")
+                        .offset(y: -2)
                 }
                 .buttonStyle(.borderless)
                 .disabled(selection.isEmpty)
                 .help("Delete selected")
             }
-
-            // Archive (or unarchive) every share with a selected file —
-            // non-destructive, so no confirm step.
-            Button {
-                archiveSelected()
-            } label: {
-                Image(systemName: store.showingArchive
-                      ? "tray.and.arrow.up" : "archivebox")
-            }
-            .buttonStyle(.borderless)
-            .disabled(selection.isEmpty)
-            .help(store.showingArchive ? "Unarchive selected" : "Archive selected")
 
             if !selection.isEmpty {
                 Text("\(selection.count) selected")
@@ -556,8 +565,9 @@ struct ShareListView: View {
                     cancelRevert()
                     withAnimation { confirming = id }
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
+                    Image(systemName: "trash")
                         .foregroundStyle(.secondary)
+                        .offset(y: -2)
                 }
                 .buttonStyle(.borderless)
                 .help(help)
@@ -645,9 +655,20 @@ struct ShareListView: View {
                 Text(item.title)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Text("\(item.date.formatted(.relative(presentation: .named)))  ·  \(ByteCountFormatter.string(fromByteCount: item.size, countStyle: .file))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if let count = viewCount(for: item) {
+                    Text(metadata(for: item, viewCount: count))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .help("Page views in the last 31 days")
+                        .accessibilityLabel(metadataAccessibilityLabel(
+                            for: item, viewCount: count))
+                } else {
+                    Text(metadata(for: item, viewCount: nil))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
@@ -660,7 +681,7 @@ struct ShareListView: View {
                     store.setPinned(item, !item.isPinned)
                 } label: {
                     Image(systemName: item.isPinned ? "pin.fill" : "pin")
-                        .foregroundStyle(item.isPinned ? Color.accentColor : Color.secondary)
+                        .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.borderless)
                 .help(item.isPinned ? "Unpin" : "Pin to top")
@@ -711,6 +732,34 @@ struct ShareListView: View {
                                     ? item.fileURL.absoluteString : nil)
             }))
         .onHover(perform: confirmRevertOnHover(item.id))
+    }
+
+    private func viewCount(for item: ShareItem) -> Int64? {
+        guard let pageKey = item.keys.first(where: {
+            $0 == "index.html" || $0.hasSuffix("/index.html")
+        }) else { return nil }
+        return viewCounts.count(forPageKey: pageKey)
+    }
+
+    private func metadata(for item: ShareItem, viewCount: Int64?) -> String {
+        var parts = [item.date.formatted(.relative(presentation: .named))]
+        if let viewCount {
+            let number = viewCount.formatted(.number.grouping(.automatic))
+            parts.append("\(number) \(viewCount == 1 ? "view" : "views")")
+        }
+        parts.append(ByteCountFormatter.string(
+            fromByteCount: item.size, countStyle: .file))
+        return parts.joined(separator: "  ·  ")
+    }
+
+    private func metadataAccessibilityLabel(
+        for item: ShareItem, viewCount: Int64
+    ) -> String {
+        let number = viewCount.formatted(.number.grouping(.automatic))
+        let views = "\(number) page \(viewCount == 1 ? "view" : "views") in the last 31 days"
+        let size = ByteCountFormatter.string(
+            fromByteCount: item.size, countStyle: .file)
+        return "\(item.date.formatted(.relative(presentation: .named))), \(views), \(size)"
     }
 
     private func childRow(_ item: ShareItem, _ child: ShareChild) -> some View {

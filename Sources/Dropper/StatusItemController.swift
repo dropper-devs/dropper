@@ -114,7 +114,7 @@ struct ActiveDropTargets {
 }
 
 @MainActor
-final class StatusItemController: NSObject {
+final class StatusItemController: NSObject, NSWindowDelegate {
     static let dropdownSize = NSSize(width: 380, height: 575 + DropdownShape.beakHeight)
 
     private var client: R2Client?
@@ -140,6 +140,7 @@ final class StatusItemController: NSObject {
     /// edge, then re-expand upward off-screen.
     private var panelHost: NSHostingController<PopoverRootView>?
     private let state = UIState()
+    private let viewCounts = ShareViewCountState()
     private var store: ShareStore?
     private var settingsWindow: NSWindow?
     private var openedByDrag = false
@@ -200,9 +201,10 @@ final class StatusItemController: NSObject {
     /// configuration. Called at startup and after Settings changes.
     func rebuildClient() {
         let config = ConfigStore.snapshot()
+        viewCounts.reset()
         client = ConfigStore.resolveCredentials()
             .map { R2Client(credentials: $0, config: config) }
-        store = client.map(ShareStore.init)
+        store = client.map { ShareStore(client: $0, viewCounts: viewCounts) }
         uploads.client = client
         uploads.store = store
 
@@ -468,10 +470,12 @@ final class StatusItemController: NSObject {
     // MARK: - Onboarding
 
     private var onboardingWindow: NSWindow?
+    private var onboardingModel: OnboardingModel?
 
     func openOnboarding() {
         onboardingWindow?.close()
         let model = OnboardingModel()
+        onboardingModel = model
         let view = OnboardingView(
             model: model,
             onConfigured: { [weak self] in
@@ -490,6 +494,7 @@ final class StatusItemController: NSObject {
         window.title = "Set Up Dropper"
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
+        window.delegate = self
         window.contentView = NSHostingView(rootView: view)
         window.contentMinSize = NSSize(width: 500, height: 500)
         window.isReleasedWhenClosed = false
@@ -499,6 +504,14 @@ final class StatusItemController: NSObject {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow,
+              window === onboardingWindow else { return }
+        onboardingModel?.cancel()
+        onboardingModel = nil
+        onboardingWindow = nil
+    }
+
     func openSettings() {
         // Fresh window each time so the fields re-read the stored config.
         settingsWindow?.close()
@@ -506,7 +519,11 @@ final class StatusItemController: NSObject {
         let availableHeight = max(360, (targetScreen?.visibleFrame.height ?? 680) - 40)
         let contentHeight = min(640, availableHeight)
         let view = SettingsView(
+            viewCounts: viewCounts,
             onSave: { [weak self] in self?.rebuildClient() },
+            onViewCountsChanged: { [weak self] in
+                self?.store?.refreshViewCounts(force: true)
+            },
             onClose: { [weak self] in self?.settingsWindow?.close() })
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 460, height: contentHeight),

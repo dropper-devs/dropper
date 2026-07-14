@@ -79,20 +79,56 @@ enum ConfigStore {
 
 enum Keychain {
     private static let service = "com.temeculadsp.dropper"
-    private static let account = "cloudflare-api-token"
+    private static let primaryAccount = "cloudflare-api-token"
+    private static let analyticsAccount = "cloudflare-analytics-token"
 
-    static func saveToken(_ token: String) {
-        deleteToken()
+    @discardableResult
+    static func saveToken(_ token: String) -> Bool {
+        save(token, account: primaryAccount)
+    }
+
+    static func loadToken() -> String? {
+        load(account: primaryAccount)
+    }
+
+    static func deleteToken() {
+        delete(account: primaryAccount)
+    }
+
+    /// Optional read-only token used solely for Cloudflare Analytics.
+    /// Keeping it separate lets the existing R2 credential remain unchanged.
+    @discardableResult
+    static func saveAnalyticsToken(_ token: String) -> Bool {
+        save(token, account: analyticsAccount)
+    }
+
+    static func loadAnalyticsToken() -> String? {
+        load(account: analyticsAccount)
+    }
+
+    static func deleteAnalyticsToken() {
+        delete(account: analyticsAccount)
+    }
+
+    private static func save(_ token: String, account: String) -> Bool {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
-            kSecValueData as String: Data(token.utf8),
         ]
-        SecItemAdd(query as CFDictionary, nil)
+        let value = Data(token.utf8)
+        let updateStatus = SecItemUpdate(
+            query as CFDictionary,
+            [kSecValueData as String: value] as CFDictionary)
+        if updateStatus == errSecSuccess { return true }
+        guard updateStatus == errSecItemNotFound else { return false }
+
+        var addition = query
+        addition[kSecValueData as String] = value
+        return SecItemAdd(addition as CFDictionary, nil) == errSecSuccess
     }
 
-    static func loadToken() -> String? {
+    private static func load(account: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -106,7 +142,7 @@ enum Keychain {
         return String(data: data, encoding: .utf8)
     }
 
-    static func deleteToken() {
+    private static func delete(account: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

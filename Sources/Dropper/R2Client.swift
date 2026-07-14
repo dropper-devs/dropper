@@ -109,6 +109,33 @@ final class R2Client: NSObject, URLSessionTaskDelegate {
         return try await send(request: request)
     }
 
+    /// A tiny signed ListObjectsV2 request used by onboarding to prove that
+    /// the account-specific R2 TLS endpoint, credentials, and bucket are all
+    /// ready. It reads at most one key and never mutates storage.
+    func probeReadiness() async throws {
+        _ = try await send(request: readinessRequest())
+    }
+
+    /// Temporary clients (such as onboarding's readiness probe) must release
+    /// URLSession's strong reference to its delegate when their work is done.
+    func finishTasksAndInvalidate() {
+        session.finishTasksAndInvalidate()
+    }
+
+    /// Internal so the request's method, destination, and signing can be
+    /// verified without making a network request in unit tests.
+    func readinessRequest() -> URLRequest {
+        var request = makeRequest(method: "GET", key: nil, query: [
+            ("list-type", "2"), ("max-keys", "1"),
+        ])
+        // Combined with onboarding's 30 seconds of backoff, six probes at
+        // five seconds each keep the entire automatic grace period near one
+        // minute even if every request reaches its timeout.
+        request.timeoutInterval = 5
+        SigV4.sign(request: &request, credentials: credentials)
+        return request
+    }
+
     func delete(key: String) async throws {
         var request = makeRequest(method: "DELETE", key: key)
         SigV4.sign(request: &request, credentials: credentials)
@@ -136,18 +163,24 @@ final class R2Client: NSObject, URLSessionTaskDelegate {
 
     /// Data-task request for GET/DELETE; returns the body, throws on non-2xx.
     private func send(request: URLRequest) async throws -> Data {
-        try await withCheckedThrowingContinuation { cont in
-            let task = session.dataTask(with: request) { data, response, error in
-                if let error { cont.resume(throwing: error); return }
-                let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-                if (200...299).contains(status) {
-                    cont.resume(returning: data ?? Data())
-                } else {
-                    let body = String(data: data ?? Data(), encoding: .utf8) ?? ""
-                    cont.resume(throwing: R2Error.badStatus(status, body))
+        let box = SessionTaskBox()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { cont in
+                let task = session.dataTask(with: request) { data, response, error in
+                    if let error { cont.resume(throwing: error); return }
+                    let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+                    if (200...299).contains(status) {
+                        cont.resume(returning: data ?? Data())
+                    } else {
+                        let body = String(data: data ?? Data(), encoding: .utf8) ?? ""
+                        cont.resume(throwing: R2Error.badStatus(status, body))
+                    }
                 }
+                box.set(task)
+                task.resume()
             }
-            task.resume()
+        } onCancel: {
+            box.cancel()
         }
     }
 

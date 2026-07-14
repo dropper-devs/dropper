@@ -63,13 +63,18 @@ final class ShareStore: ObservableObject {
     @Published var folders: [FolderRow] = []
     @Published var looseFiles: [LooseFile] = []
 
+    /// Optional Cloudflare analytics state shared with Settings. The normal
+    /// R2 listing remains independent, so counts can never hold up the menu.
+    let viewCounts: ShareViewCountState
+
     /// The folder being browsed ("" = bucket root) — also the drop target.
     var folder: String { client.config.prefix }
 
     private let client: R2Client
 
-    init(client: R2Client) {
+    init(client: R2Client, viewCounts: ShareViewCountState) {
         self.client = client
+        self.viewCounts = viewCounts
     }
 
     /// The share a highlight refers to (the share itself, or the parent of a
@@ -202,6 +207,10 @@ final class ShareStore: ObservableObject {
                 self.allItems = grouped.items
                 self.folders = grouped.folders
                 self.looseFiles = grouped.loose
+                self.refreshViewCounts(
+                    pageKeys: grouped.items.map {
+                        ShareKeys(id: $0.id, config: config).page
+                    })
                 let archived = grouped.items.filter(\.isArchived).count
                 let active = grouped.items.count - archived
                 let total = objects.reduce(Int64(0)) { $0 + $1.size }
@@ -213,6 +222,43 @@ final class ShareStore: ObservableObject {
                 self.errorMessage = error.localizedDescription
             }
             self.loading = false
+        }
+    }
+
+    /// Loads all visible page counts with one GraphQL request. A dedicated
+    /// read-only analytics token wins when present; otherwise the existing R2
+    /// token gets one chance to prove it already has analytics permission.
+    /// Definite credential failures wait for Settings instead of retrying on
+    /// every pin/archive refresh.
+    func refreshViewCounts(pageKeys: [String]? = nil, force: Bool = false) {
+        guard !viewCounts.isLoading else { return }
+        if !force,
+           viewCounts.accessState == .permissionRequired
+            || viewCounts.accessState == .authenticationFailed {
+            return
+        }
+        guard let token = Keychain.loadAnalyticsToken() ?? Keychain.loadToken() else {
+            return
+        }
+
+        let config = client.config
+        let keys = pageKeys ?? allItems.map {
+            ShareKeys(id: $0.id, config: config).page
+        }
+        Task {
+            if keys.isEmpty {
+                await viewCounts.checkAccess(
+                    accountID: config.accountID,
+                    bucketName: config.bucket,
+                    token: token)
+            } else {
+                await viewCounts.load(
+                    accountID: config.accountID,
+                    bucketName: config.bucket,
+                    pageKeys: keys,
+                    token: token,
+                    force: force)
+            }
         }
     }
 

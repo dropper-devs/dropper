@@ -4,8 +4,17 @@ import type { Kind, RowID } from "./data"
 /* ----------------------------- inline icons ------------------------------ */
 /* SF-symbol-style strokes matching the app's toolbar/rows. */
 
-const I = ({ d, filled = false }: { d: React.ReactNode; filled?: boolean }) => (
+const I = ({
+  d,
+  filled = false,
+  className,
+}: {
+  d: React.ReactNode
+  filled?: boolean
+  className?: string
+}) => (
   <svg
+    className={className}
     viewBox="0 0 24 24"
     fill={filled ? "currentColor" : "none"}
     stroke={filled ? "none" : "currentColor"}
@@ -41,6 +50,7 @@ export const icons = {
   ),
   trash: (
     <I
+      className="icon-trash"
       d={
         <>
           <path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13M10 11v5M14 11v5" />
