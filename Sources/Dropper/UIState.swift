@@ -41,15 +41,42 @@ final class UIState: ObservableObject {
     @Published var beakOffset: CGFloat = 190  // beak tip x within the panel
     @Published private(set) var draggedFileCount = 0
     private var fileDragTargets = FileDragTargets()
+    private var pendingClear: DispatchWorkItem?
 
     func setDraggedFileCount(_ count: Int, for targetID: String) {
         fileDragTargets.set(targetID, count: count)
         let nextCount = fileDragTargets.fileCount
-        if draggedFileCount != nextCount { draggedFileCount = nextCount }
+        if nextCount > 0 {
+            // A live target: apply now and cancel any pending clear.
+            pendingClear?.cancel()
+            pendingClear = nil
+            if draggedFileCount != nextCount { draggedFileCount = nextCount }
+        } else {
+            // No target advertises files. AppKit sends the OLD target's exit
+            // before the NEW target's enter, so a bare 0 during a hover
+            // transition would flicker the multi-file split preview off then
+            // on. Defer the drop to zero; the next enter cancels it.
+            scheduleClear()
+        }
     }
 
     func clearDraggedFiles() {
+        pendingClear?.cancel()
+        pendingClear = nil
         fileDragTargets.removeAll()
         if draggedFileCount != 0 { draggedFileCount = 0 }
+    }
+
+    private func scheduleClear() {
+        pendingClear?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.pendingClear = nil
+            if self.fileDragTargets.fileCount == 0, self.draggedFileCount != 0 {
+                self.draggedFileCount = 0
+            }
+        }
+        pendingClear = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: work)
     }
 }

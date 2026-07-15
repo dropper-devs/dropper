@@ -41,10 +41,11 @@ func rowThumbnail(url: URL?, kind: MediaKind?, side: CGFloat) -> some View {
     .frame(width: side, height: side)
     .background(Color.secondary.opacity(0.1))
     .clipShape(RoundedRectangle(cornerRadius: 6))
-    // Decorative only, in every call site. A `.fill` landscape cover overflows
-    // the frame; clipShape masks the pixels but NOT the hit region, so the
-    // frontmost thumbnail was swallowing clicks on the adjacent chevron.
-    .allowsHitTesting(false)
+    // A `.fill` landscape cover overflows the frame and clipShape masks only the
+    // pixels, not the hit region. Pin the hit shape to the frame: that stops the
+    // overflow swallowing the adjacent chevron/grip AND keeps the thumbnail
+    // clickable, so callers can make it part of the row's select area.
+    .contentShape(Rectangle())
 }
 
 func rowCheckbox(isOn: Bool, mixed: Bool = false,
@@ -181,6 +182,9 @@ struct ParentRow: View {
                 }
 
                 rowThumbnail(url: item.thumbURL, kind: item.kind, side: 30)
+                    .onTapGesture {
+                        model.handleSelectionClick(rowID: item.id, keys: childKeys)
+                    }
             }
 
             Button {
@@ -340,6 +344,9 @@ struct ChildRow: View {
             }
 
             rowThumbnail(url: child.thumbURL, kind: child.kind, side: 24)
+                .onTapGesture {
+                    model.handleSelectionClick(rowID: child.key, keys: [child.key])
+                }
 
             Button {
                 model.handleSelectionClick(rowID: child.key, keys: [child.key])

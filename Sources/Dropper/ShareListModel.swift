@@ -304,10 +304,11 @@ final class ShareListModel: ObservableObject {
     /// never re-renders the row being dragged.
     func reorder(in item: ShareItem, draggedKey: String, targetKey: String, after: Bool) {
         guard item.children.contains(where: { $0.key == draggedKey }) else { return }
-        let moving = selection.contains(draggedKey)
-            ? store.orderedChildren(item).map(\.key).filter { selection.contains($0) }
-            : [draggedKey]
-        store.reorderChildren(of: item, moving: moving, targetKey: targetKey, after: after)
+        // Reorder moves just the grabbed file, checked or not — selection is for
+        // bulk actions, not a drag payload. (Moving the whole checked set was
+        // the bug: when every row was checked, nothing unchecked was left to
+        // anchor the drop, so it silently did nothing.)
+        store.reorderChildren(of: item, moving: [draggedKey], targetKey: targetKey, after: after)
     }
 
     // MARK: - New folder
