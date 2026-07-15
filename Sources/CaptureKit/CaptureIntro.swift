@@ -198,7 +198,6 @@ public enum CaptureIntro {
 
         let positions: [CGPoint]
         let sizes: [NSValue]
-        let squashes: [NSValue]
         let keyTimes: [NSNumber]
         let timings: [CAMediaTimingFunction]
         let ghostDuration: CFTimeInterval
@@ -208,7 +207,6 @@ public enum CaptureIntro {
             // ending on a squash would leave it permanently out of aspect.
             positions = [center(start), center(end), center(end)]
             sizes = [NSValue(size: start.size), NSValue(size: end.size), NSValue(size: end.size)]
-            squashes = [squash(1), squash(0.96), squash(1)]
             keyTimes = [0, 0.82, 1]
             timings = [easeInOut, easeOut]
             ghostDuration = 0.6 * captureSlowMo
@@ -221,10 +219,6 @@ public enum CaptureIntro {
             sizes = [NSValue(size: start.size), NSValue(size: lifted.size),
                      NSValue(size: lifted.size), NSValue(size: end.size),
                      NSValue(size: end.size), NSValue(size: end.size)]
-            // Settles in with a gentle landing squash — compress, then pop back
-            // to full height as it lands in the frame.
-            squashes = [squash(1), squash(1), squash(1), squash(1),
-                        squash(0.95), squash(1)]
             keyTimes = [0, 0.42, 0.50, 0.80, 0.90, 1.0]
             timings = [easeOut, easeInOut, easeInOut, easeInOut, easeOut]
             ghostDuration = Timing.ghost
@@ -234,10 +228,27 @@ public enum CaptureIntro {
                     keyTimes, timings, ghostDuration, delay: deepenDuration)
         addKeyframe(ghost, "bounds.size", sizes, keyTimes, timings, ghostDuration,
                     delay: deepenDuration)
-        addKeyframe(ghost, "transform", squashes, keyTimes, timings, ghostDuration,
-                    delay: deepenDuration)
         ghost.position = center(end)
         ghost.bounds = CGRect(origin: .zero, size: end.size)
+
+        // Landing squash — a NATIVE Core Animation spring (macOS 14 perceptual
+        // duration + bounce, the same vocabulary as SwiftUI's .spring). It kicks
+        // in the instant it touches down: compress on impact, then overshoot and
+        // settle with real spring physics rather than hand-drawn keyframes.
+        let squash: CASpringAnimation
+        if #available(macOS 14.0, *) {
+            squash = CASpringAnimation(perceptualDuration: 0.5 * captureSlowMo, bounce: 0.35)
+        } else {
+            squash = CASpringAnimation()
+            squash.mass = 1; squash.stiffness = 260; squash.damping = 14
+        }
+        squash.keyPath = "transform.scale.y"
+        squash.fromValue = 0.94
+        squash.toValue = 1.0
+        squash.fillMode = .forwards
+        squash.isRemovedOnCompletion = false
+        squash.beginTime = CACurrentMediaTime() + deepenDuration + ghostDuration * 0.8
+        ghost.add(squash, forKey: "landingSquash")
 
         // Shadow: grows, softens, offsets — and LAGS the lift ~50ms.
         let shadowRadius = isFullScreen ? [8.0, 34.0, 30.0] : [8.0, 40.0, 40.0, 24.0, 22.0, 18.0]
@@ -313,10 +324,6 @@ public enum CaptureIntro {
         static let editorAssemble: CFTimeInterval = 0.46 * captureSlowMo
         static let liftHeight: CGFloat = 56       // spatial — not scaled
         static let liftScale: CGFloat = 1.06      // spatial — not scaled
-    }
-
-    private static func squash(_ y: CGFloat) -> NSValue {
-        NSValue(caTransform3D: CATransform3DMakeScale(1, y, 1))
     }
 
     private static func addKeyframe(

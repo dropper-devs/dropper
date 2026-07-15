@@ -15,6 +15,36 @@ struct DropPillActions {
     var isListOpen: () -> Bool   // the popover owns its own links; don't revert those
 }
 
+/// Delays the system window drag until the pointer has moved far enough that
+/// a slightly imprecise click cannot nudge the notch out of place.
+@MainActor
+private final class DropPillPanel: NSPanel {
+    private static let dragThreshold: CGFloat = 5
+    private var dragMouseDown: NSEvent?
+
+    override func sendEvent(_ event: NSEvent) {
+        switch event.type {
+        case .leftMouseDown:
+            dragMouseDown = event
+        case .leftMouseDragged:
+            if let mouseDown = dragMouseDown {
+                let dx = event.locationInWindow.x - mouseDown.locationInWindow.x
+                let dy = event.locationInWindow.y - mouseDown.locationInWindow.y
+                if dx * dx + dy * dy >= Self.dragThreshold * Self.dragThreshold {
+                    dragMouseDown = nil
+                    performDrag(with: mouseDown)
+                    return
+                }
+            }
+        case .leftMouseUp:
+            dragMouseDown = nil
+        default:
+            break
+        }
+        super.sendEvent(event)
+    }
+}
+
 /// An optional pill hanging just below the menu bar: drop files onto it to
 /// upload, watch progress, then copy the link. A floating companion to the
 /// menu-bar icon's own drop target, driven by the same shared `UIState`.
@@ -25,8 +55,7 @@ final class DropPillController: NSObject {
     // clear room on every side and never clips against the window's edge.
     static let size = NSSize(width: 380, height: 132)
     private static let originKey = "DropPillOrigin"
-    private static let visibilityKey = "DropPillVisible"
-    private let panel: NSPanel
+    private let panel: DropPillPanel
     private var lastMoveTime: TimeInterval = 0
 
     /// True right after the pill was dragged, so a click that lands at the end
@@ -36,13 +65,13 @@ final class DropPillController: NSObject {
     }
 
     static var shouldShow: Bool {
-        UserDefaults.standard.object(forKey: visibilityKey) as? Bool ?? true
+        ConfigStore.notchVisible()
     }
 
     var isVisible: Bool { panel.isVisible }
 
     init(state: UIState, actions: DropPillActions) {
-        panel = NSPanel(
+        panel = DropPillPanel(
             contentRect: NSRect(origin: .zero, size: Self.size),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered, defer: false)
@@ -54,7 +83,7 @@ final class DropPillController: NSObject {
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.becomesKeyOnlyIfNeeded = true
-        panel.isMovableByWindowBackground = true  // drag it anywhere on the desktop
+        panel.isMovableByWindowBackground = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         // A hosting *controller* (not a raw NSHostingView) is what reliably
         // drives SwiftUI animations for a window's content — same as the
@@ -80,8 +109,24 @@ final class DropPillController: NSObject {
     func hide() { panel.orderOut(nil) }
 
     func setVisible(_ visible: Bool) {
-        UserDefaults.standard.set(visible, forKey: Self.visibilityKey)
-        if visible { show() } else { hide() }
+        UserDefaults.standard.set(visible, forKey: ConfigStore.keys.notchVisible)
+        applyVisibilityPreference()
+    }
+
+    func applyVisibilityPreference() {
+        guard Self.shouldShow != panel.isVisible else { return }
+        if Self.shouldShow { show() } else { hide() }
+    }
+
+    /// Moves the notch to the same top-center position used on first launch.
+    func center(on screen: NSScreen) {
+        let visible = screen.visibleFrame
+        let frame = NSRect(
+            x: screen.frame.midX - Self.size.width / 2,
+            y: visible.maxY - Self.size.height,
+            width: Self.size.width,
+            height: Self.size.height)
+        panel.setFrame(Self.clamp(frame, to: visible), display: true)
     }
 
     /// Restores the user's chosen spot, or defaults to just below the menu bar.

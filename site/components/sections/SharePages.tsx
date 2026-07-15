@@ -21,6 +21,15 @@ export default function SharePages() {
               <li>
                 <Tick />
                 <span>
+                  <strong>Optional image gallery view.</strong> Multiple images
+                  become a compact square grid; click any tile for a smoothly
+                  animated, full-screen lightbox with a blurred backdrop and
+                  previous/next navigation.
+                </span>
+              </li>
+              <li>
+                <Tick />
+                <span>
                   <strong>SoundCloud-style audio player.</strong> Waveforms are
                   computed at upload time, drawn crisp at any DPI,
                   click-to-seek, one track playing at a time.

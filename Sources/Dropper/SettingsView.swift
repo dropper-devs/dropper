@@ -29,6 +29,7 @@ struct SettingsView: View {
     @State private var convertAIFF = ConfigStore.convertAIFF()
     @State private var convertMOV = ConfigStore.convertMOV()
     @State private var imageGallery = ConfigStore.imageGallery()
+    @State private var showNotch = ConfigStore.notchVisible()
     @State private var hasStoredAnalyticsToken = Keychain.loadAnalyticsToken() != nil
     @State private var showingViewCountSetup = false
 
@@ -58,6 +59,8 @@ struct SettingsView: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
+                    appearanceSection
+                    Divider()
                     tokenSection
                     Divider()
                     fieldsSection
@@ -97,6 +100,19 @@ struct SettingsView: View {
         }
         .onDisappear {
             invalidateOperations()
+        }
+    }
+
+    // MARK: - Appearance
+
+    private var appearanceSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Appearance").font(.headline)
+            Toggle("Show Notch", isOn: $showNotch)
+                .toggleStyle(.checkbox)
+            Text("Show the floating drop and capture control on the desktop.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -562,6 +578,7 @@ struct SettingsView: View {
         d.set(convertAIFF, forKey: ConfigStore.keys.convertAIFF)
         d.set(convertMOV, forKey: ConfigStore.keys.convertMOV)
         d.set(imageGallery, forKey: ConfigStore.keys.imageGallery)
+        d.set(showNotch, forKey: ConfigStore.keys.notchVisible)
         onSave()
         onClose()
     }

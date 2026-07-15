@@ -672,7 +672,10 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         let contentHeight = min(640, availableHeight)
         let view = SettingsView(
             viewCounts: viewCounts,
-            onSave: { [weak self] in self?.rebuildClient() },
+            onSave: { [weak self] in
+                self?.dropPill?.applyVisibilityPreference()
+                self?.rebuildClient()
+            },
             onViewCountsChanged: { [weak self] in
                 self?.store?.refreshViewCounts(force: true)
             },
@@ -706,6 +709,15 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         return item
     }()
 
+    private lazy var centerNotchMenuItem: NSMenuItem = {
+        let item = NSMenuItem(title: "Center Notch",
+                              action: #selector(centerNotchFromMenu), keyEquivalent: "")
+        item.target = self
+        return item
+    }()
+
+    private var contextMenuScreen: NSScreen?
+
     private lazy var contextMenu: NSMenu = {
         let menu = NSMenu()
         let captures: [(String, Selector)] = [
@@ -720,6 +732,7 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         }
         menu.addItem(.separator())
         menu.addItem(notchMenuItem)
+        menu.addItem(centerNotchMenuItem)
         menu.addItem(.separator())
         let settings = NSMenuItem(title: "Settings…",
                                   action: #selector(settingsFromMenu), keyEquivalent: ",")
@@ -750,6 +763,13 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         dropPill.setVisible(!dropPill.isVisible)
     }
 
+    @objc private func centerNotchFromMenu() {
+        guard let screen = contextMenuScreen
+                ?? statusItem.button?.window?.screen
+                ?? NSScreen.main ?? NSScreen.screens.first else { return }
+        dropPill?.center(on: screen)
+    }
+
     @objc private func captureAreaFromMenu() { beginCapture(.area) }
     @objc private func captureWindowFromMenu() { beginCapture(.window) }
     @objc private func captureScreenFromMenu() { beginCapture(.display) }
@@ -769,9 +789,19 @@ final class StatusItemController: NSObject, NSWindowDelegate {
 
     private func showContextMenu() {
         guard let button = statusItem.button else { return }
+        if let buttonWindow = button.window {
+            let anchor = buttonWindow.convertToScreen(
+                button.convert(button.bounds, to: nil))
+            let anchorPoint = NSPoint(x: anchor.midX, y: anchor.midY)
+            contextMenuScreen = NSScreen.screens.first {
+                NSMouseInRect(anchorPoint, $0.frame, false)
+            } ?? buttonWindow.screen
+        } else {
+            contextMenuScreen = nil
+        }
         let notchIsVisible = dropPill?.isVisible == true
-        notchMenuItem.title = notchIsVisible ? "Hide Notch" : "Show Notch"
         notchMenuItem.state = notchIsVisible ? .on : .off
+        centerNotchMenuItem.isHidden = !notchIsVisible
         contextMenu.popUp(positioning: nil,
                           at: NSPoint(x: 0, y: button.bounds.height + 6), in: button)
     }
