@@ -248,7 +248,7 @@ final class StatusItemController: NSObject, NSWindowDelegate {
             },
             isListOpen: { [weak self] in self?.panel.isVisible ?? false })
         dropPill = DropPillController(state: state, actions: pillActions)
-        dropPill?.show()
+        if DropPillController.shouldShow { dropPill?.show() }
     }
 
     /// (Re)creates the client, store, and popover content from the stored
@@ -699,6 +699,13 @@ final class StatusItemController: NSObject, NSWindowDelegate {
 
     // MARK: - Context menu
 
+    private lazy var notchMenuItem: NSMenuItem = {
+        let item = NSMenuItem(title: "Show Notch",
+                              action: #selector(toggleNotchFromMenu), keyEquivalent: "")
+        item.target = self
+        return item
+    }()
+
     private lazy var contextMenu: NSMenu = {
         let menu = NSMenu()
         let captures: [(String, Selector)] = [
@@ -711,6 +718,8 @@ final class StatusItemController: NSObject, NSWindowDelegate {
             item.target = self
             menu.addItem(item)
         }
+        menu.addItem(.separator())
+        menu.addItem(notchMenuItem)
         menu.addItem(.separator())
         let settings = NSMenuItem(title: "Settings…",
                                   action: #selector(settingsFromMenu), keyEquivalent: ",")
@@ -736,6 +745,11 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         openSettings()
     }
 
+    @objc private func toggleNotchFromMenu() {
+        guard let dropPill else { return }
+        dropPill.setVisible(!dropPill.isVisible)
+    }
+
     @objc private func captureAreaFromMenu() { beginCapture(.area) }
     @objc private func captureWindowFromMenu() { beginCapture(.window) }
     @objc private func captureScreenFromMenu() { beginCapture(.display) }
@@ -749,11 +763,15 @@ final class StatusItemController: NSObject, NSWindowDelegate {
             },
             onFailure: { [weak self] message in
                 self?.notify(title: "Capture failed", body: message)
-            })
+            },
+            onLanded: { Sounds.drop?.play() })
     }
 
     private func showContextMenu() {
         guard let button = statusItem.button else { return }
+        let notchIsVisible = dropPill?.isVisible == true
+        notchMenuItem.title = notchIsVisible ? "Hide Notch" : "Show Notch"
+        notchMenuItem.state = notchIsVisible ? .on : .off
         contextMenu.popUp(positioning: nil,
                           at: NSPoint(x: 0, y: button.bounds.height + 6), in: button)
     }

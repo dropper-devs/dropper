@@ -141,7 +141,7 @@ enum ConfigStore {
     static let keys = (account: "accountID", bucket: "bucket", prefix: "prefix",
                        publicBase: "publicBase", tokenID: "cfTokenID",
                        convertHEIC: "convertHEIC", convertAIFF: "convertAIFF",
-                       convertMOV: "convertMOV")
+                       convertMOV: "convertMOV", imageGallery: "imageGallery")
 
     /// Conversion toggles default ON: the source formats don't play in most
     /// non-Apple browsers (HEIC images; AIFF audio in Chrome/Firefox; HEVC/
@@ -149,8 +149,11 @@ enum ConfigStore {
     static func convertHEIC() -> Bool { boolSetting(keys.convertHEIC) }
     static func convertAIFF() -> Bool { boolSetting(keys.convertAIFF) }
     static func convertMOV() -> Bool { boolSetting(keys.convertMOV) }
+    static func imageGallery() -> Bool {
+        boolSetting(keys.imageGallery, default: false)
+    }
 
-    /// A user toggle that defaults ON until it has been explicitly set.
+    /// Reads a user toggle, returning its fallback until explicitly set.
     private static func boolSetting(_ key: String, default fallback: Bool = true) -> Bool {
         UserDefaults.standard.object(forKey: key) as? Bool ?? fallback
     }

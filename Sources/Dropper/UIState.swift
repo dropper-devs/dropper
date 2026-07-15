@@ -11,6 +11,26 @@ enum StripState: Equatable {
     case links(name: String, pageURLs: [String], fileURLs: [String])
 }
 
+/// The indeterminate phase of the upload ring. A timeline-driven angle keeps
+/// spinning without adding timer state to each surface that shows progress.
+struct SpinningProgressArc: View {
+    let color: Color
+    let lineWidth: CGFloat
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            let duration = 0.8
+            let elapsed = timeline.date.timeIntervalSinceReferenceDate
+                .truncatingRemainder(dividingBy: duration)
+            Circle()
+                .trim(from: 0, to: 0.28)
+                .stroke(color, style: StrokeStyle(
+                    lineWidth: lineWidth, lineCap: .round))
+                .rotationEffect(.degrees(elapsed / duration * 360 - 90))
+        }
+    }
+}
+
 /// Counts the files advertised by every destination currently under the
 /// pointer. Multiple tokens matter because AppKit can enter a child target
 /// before it sends the matching exit for its parent (or vice versa).

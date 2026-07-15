@@ -24,6 +24,110 @@ let sharePageStyles = """
       audio { width: min(640px, 100%); }
       figcaption { opacity: 0.7; word-break: break-all; text-align: center; font-size: 13px; }
       figcaption a { color: inherit; }
+      .gallery-content { max-width: 1280px; }
+      .image-gallery {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 150px));
+        justify-content: center; gap: clamp(8px, 1.2vw, 16px); width: 100%;
+      }
+      .gallery-item {
+        display: block; position: relative; aspect-ratio: 1; overflow: hidden;
+        box-sizing: border-box; border-radius: 12px;
+        border: 1px solid rgba(255,255,255,0.08); background: #1c1e27;
+        box-shadow: 0 14px 34px rgba(0,0,0,0.22); cursor: pointer;
+      }
+      .gallery-item img {
+        display: block; width: 100%; height: 100%; max-width: none; max-height: none;
+        border-radius: 0; object-fit: cover; pointer-events: none; cursor: pointer;
+        transition: transform 0.32s cubic-bezier(0.2, 0.7, 0.2, 1);
+      }
+      .gallery-item:hover img { transform: scale(1.035); }
+      .gallery-item:focus-visible {
+        outline: 3px solid #c7d0ff; outline-offset: 4px;
+      }
+      .lightbox {
+        position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh;
+        max-width: none; max-height: none; margin: 0; border: 0;
+        padding: clamp(68px, 8vh, 96px) clamp(70px, 8vw, 120px)
+                 clamp(24px, 4vh, 48px); box-sizing: border-box;
+        overflow: hidden; background: rgba(9,10,14,0.72); color: #d7d9e0;
+      }
+      .lightbox[open] {
+        display: flex; align-items: center; justify-content: center;
+        animation: lightbox-fade-in 0.24s ease-out both;
+      }
+      .lightbox[open] .lightbox-stage {
+        animation: lightbox-stage-in 0.32s cubic-bezier(0.2, 0.75, 0.2, 1) both;
+      }
+      .lightbox::backdrop {
+        background: rgba(9,10,14,0.38);
+        -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+      }
+      .lightbox[open]::backdrop {
+        animation: lightbox-backdrop-in 0.24s ease-out both;
+      }
+      .lightbox.closing { animation: lightbox-fade-out 0.18s ease-in both; }
+      .lightbox.closing .lightbox-stage {
+        animation: lightbox-stage-out 0.18s ease-in both;
+      }
+      .lightbox.closing::backdrop {
+        animation: lightbox-backdrop-out 0.18s ease-in both;
+      }
+      @keyframes lightbox-fade-in { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes lightbox-fade-out { from { opacity: 1; } to { opacity: 0; } }
+      @keyframes lightbox-stage-in {
+        from { opacity: 0; transform: translateY(10px) scale(0.975); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+      }
+      @keyframes lightbox-stage-out {
+        from { opacity: 1; transform: translateY(0) scale(1); }
+        to { opacity: 0; transform: translateY(6px) scale(0.985); }
+      }
+      @keyframes lightbox-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes lightbox-backdrop-out { from { opacity: 1; } to { opacity: 0; } }
+      .lightbox-stage {
+        display: grid; grid-template-rows: minmax(0, 1fr) auto;
+        gap: 14px; width: min(1600px, 100%); height: 100%; max-width: 1600px;
+      }
+      .lightbox-image {
+        place-self: center; min-width: 0; min-height: 0;
+        width: auto; height: auto; max-width: 100%; max-height: 100%;
+        object-fit: contain; border-radius: 10px;
+        box-shadow: 0 24px 70px rgba(0,0,0,0.48);
+      }
+      .lightbox-caption {
+        display: flex; align-items: center; justify-content: center; gap: 12px;
+        width: 100%; min-width: 0; opacity: 1; word-break: normal; color: #d7d9e0;
+      }
+      .lightbox-name {
+        min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      .lightbox-count { flex: none; color: rgba(215,217,224,0.52); }
+      .lightbox-download {
+        flex: none; color: #c7d0ff; font-weight: 600; text-decoration: none;
+      }
+      .lightbox-download:hover { color: #fff; }
+      .lightbox-close, .lightbox-nav {
+        position: fixed; z-index: 2; display: grid; place-items: center;
+        width: 46px; height: 46px; padding: 0; border-radius: 50%;
+        border: 1px solid rgba(255,255,255,0.15);
+        background: rgba(28,30,39,0.74); color: #f2f3f7; cursor: pointer;
+        -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+        transition: background 0.15s, transform 0.15s;
+      }
+      .lightbox-close { top: 18px; right: 18px; }
+      .lightbox-nav { top: 50%; transform: translateY(-50%); }
+      .lightbox-prev { left: 18px; }
+      .lightbox-next { right: 18px; }
+      .lightbox-close:hover, .lightbox-nav:hover { background: rgba(139,156,249,0.34); }
+      .lightbox-nav:hover { transform: translateY(-50%) scale(1.04); }
+      .lightbox-close:focus-visible, .lightbox-nav:focus-visible,
+      .lightbox-download:focus-visible {
+        outline: 3px solid #c7d0ff; outline-offset: 3px;
+      }
+      .lightbox-close svg, .lightbox-nav svg {
+        width: 20px; height: 20px; fill: none; stroke: currentColor;
+        stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+      }
       .player {
         display: flex; align-items: center; gap: 14px;
         width: min(640px, 100%); box-sizing: border-box;
@@ -154,10 +258,22 @@ let sharePageStyles = """
       .closer:active { background: rgba(139,156,249,0.3); }
       @media (max-width: 700px), (pointer: coarse) {
         .closer { display: flex; }
+        .lightbox { padding: 64px 14px 20px; }
+        .lightbox-close, .lightbox-nav { width: 42px; height: 42px; }
+        .lightbox-close { top: 12px; right: 12px; }
+        .lightbox-prev { left: 8px; }
+        .lightbox-next { right: 8px; }
+        .lightbox-caption { gap: 8px; padding: 0 38px; box-sizing: border-box; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .gallery-item img, .lightbox-close, .lightbox-nav { transition: none; }
+        .gallery-item:hover img { transform: none; }
+        .lightbox[open], .lightbox[open]::backdrop,
+        .lightbox[open] .lightbox-stage { animation: none; }
       }
     """
 
-/// The share page player/preview script (audio waveform, video controls,
+/// The share page interaction script (gallery lightbox, media controls,
 /// Markdown/text fetch, single-playback coordination, mobile close button).
 let sharePagePlayerScript = """
     (() => {
@@ -292,6 +408,94 @@ let sharePagePlayerScript = """
         new ResizeObserver(draw).observe(wave);
         updatePlaybackState();
       });
+
+      const galleryItems = [...document.querySelectorAll('.gallery-item')];
+      const lightbox = document.querySelector('.lightbox');
+      if (lightbox && galleryItems.length) {
+        const preview = lightbox.querySelector('.lightbox-image');
+        const name = lightbox.querySelector('.lightbox-name');
+        const count = lightbox.querySelector('.lightbox-count');
+        const download = lightbox.querySelector('.lightbox-download');
+        const stage = lightbox.querySelector('.lightbox-stage');
+        const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+        let current = 0;
+        let closeTimer = null;
+
+        const finishClose = () => {
+          if (closeTimer !== null) {
+            clearTimeout(closeTimer);
+            closeTimer = null;
+          }
+          lightbox.classList.remove('closing');
+          if (lightbox.open) lightbox.close();
+        };
+        const closeLightbox = () => {
+          if (!lightbox.open || lightbox.classList.contains('closing')) return;
+          if (reducedMotion.matches) { finishClose(); return; }
+          lightbox.classList.add('closing');
+          closeTimer = setTimeout(finishClose, 220);
+        };
+
+        const showImage = (index) => {
+          current = (index + galleryItems.length) % galleryItems.length;
+          const item = galleryItems[current];
+          const source = item.getAttribute('href');
+          const imageName = item.dataset.name || '';
+          preview.src = source;
+          preview.alt = imageName;
+          name.textContent = imageName;
+          count.textContent = (current + 1) + ' / ' + galleryItems.length;
+          download.href = source;
+          download.download = imageName;
+          download.setAttribute('aria-label', 'Download ' + imageName);
+        };
+
+        galleryItems.forEach((item, index) => {
+          item.addEventListener('click', (event) => {
+            if (typeof lightbox.showModal !== 'function') return;
+            event.preventDefault();
+            showImage(index);
+            lightbox.showModal();
+          });
+        });
+        lightbox.querySelector('.lightbox-close').addEventListener('click', () => {
+          closeLightbox();
+        });
+        lightbox.querySelector('.lightbox-prev').addEventListener('click', () => {
+          showImage(current - 1);
+        });
+        lightbox.querySelector('.lightbox-next').addEventListener('click', () => {
+          showImage(current + 1);
+        });
+        lightbox.addEventListener('click', (event) => {
+          if (event.target === lightbox || event.target === stage) closeLightbox();
+        });
+        lightbox.addEventListener('cancel', (event) => {
+          event.preventDefault();
+          closeLightbox();
+        });
+        lightbox.addEventListener('keydown', (event) => {
+          if (event.key === 'ArrowLeft') {
+            event.preventDefault();
+            showImage(current - 1);
+          } else if (event.key === 'ArrowRight') {
+            event.preventDefault();
+            showImage(current + 1);
+          }
+        });
+        lightbox.addEventListener('animationend', (event) => {
+          if (event.target === lightbox && event.animationName === 'lightbox-fade-out') {
+            finishClose();
+          }
+        });
+        lightbox.addEventListener('close', () => {
+          if (closeTimer !== null) clearTimeout(closeTimer);
+          closeTimer = null;
+          lightbox.classList.remove('closing');
+          preview.removeAttribute('src');
+          preview.alt = '';
+        });
+      }
 
       // Mobile close button: window.close() works for script/app-opened
       // tabs; fall back to going back when the browser refuses.

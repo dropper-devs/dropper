@@ -28,6 +28,7 @@ struct SettingsView: View {
     @State private var convertHEIC = ConfigStore.convertHEIC()
     @State private var convertAIFF = ConfigStore.convertAIFF()
     @State private var convertMOV = ConfigStore.convertMOV()
+    @State private var imageGallery = ConfigStore.imageGallery()
     @State private var hasStoredAnalyticsToken = Keychain.loadAnalyticsToken() != nil
     @State private var showingViewCountSetup = false
 
@@ -62,6 +63,8 @@ struct SettingsView: View {
                     fieldsSection
                     Divider()
                     viewCountsSection
+                    Divider()
+                    sharePagesSection
                     Divider()
                     conversionsSection
                     Divider()
@@ -345,6 +348,18 @@ struct SettingsView: View {
         }
     }
 
+    private var sharePagesSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Share Pages").font(.headline)
+            Toggle("Show image collections as galleries", isOn: $imageGallery)
+                .toggleStyle(.checkbox)
+            Text("Collections with multiple images use a square grid and full-screen lightbox.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .font(.callout)
+    }
+
     private var conversionsSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             Toggle("Convert HEIC images to JPEG", isOn: $convertHEIC)
@@ -546,6 +561,7 @@ struct SettingsView: View {
         d.set(convertHEIC, forKey: ConfigStore.keys.convertHEIC)
         d.set(convertAIFF, forKey: ConfigStore.keys.convertAIFF)
         d.set(convertMOV, forKey: ConfigStore.keys.convertMOV)
+        d.set(imageGallery, forKey: ConfigStore.keys.imageGallery)
         onSave()
         onClose()
     }

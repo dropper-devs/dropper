@@ -29,9 +29,52 @@ private func downloadCard(_ item: ManifestItem) -> String {
     """
 }
 
-func renderShareHTML(title: String, items: [ManifestItem]) -> String {
+private func renderImageGallery(_ items: [ManifestItem]) -> String {
+    let tiles = items.map { item in
+        let fileURL = escapeHTML(encodedRelativeObjectPath(item.file))
+        return """
+        <a class="gallery-item" href="\(fileURL)" data-name="\(escapeHTML(item.name))" aria-label="\(escapeHTML("View \(item.name)"))">
+        <img src="\(fileURL)" alt="" loading="lazy" decoding="async">
+        </a>
+        """
+    }.joined(separator: "\n")
+
+    return """
+    <section class="image-gallery" aria-label="Image gallery">
+    \(tiles)
+    </section>
+    """
+}
+
+private let imageGalleryLightbox = """
+<dialog class="lightbox" aria-label="Image preview" aria-modal="true">
+<button class="lightbox-close" type="button" aria-label="Close image preview">
+<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4l12 12M16 4L4 16"/></svg>
+</button>
+<button class="lightbox-nav lightbox-prev" type="button" aria-label="Previous image">
+<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4L6.5 10l6 6"/></svg>
+</button>
+<figure class="lightbox-stage">
+<img class="lightbox-image" alt="">
+<figcaption class="lightbox-caption" aria-live="polite">
+<span class="lightbox-name"></span>
+<span class="lightbox-count"></span>
+<a class="lightbox-download" download>Download</a>
+</figcaption>
+</figure>
+<button class="lightbox-nav lightbox-next" type="button" aria-label="Next image">
+<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7.5 4l6 6-6 6"/></svg>
+</button>
+</dialog>
+"""
+
+func renderShareHTML(
+    title: String, items: [ManifestItem], galleryEnabled: Bool = false
+) -> String {
     let nonce = securePageNonce()
     let escapedNonce = escapeHTML(nonce)
+    let usesGallery = galleryEnabled && items.count > 1
+        && items.allSatisfy { $0.kind == .image }
     // A nonce is the only way scripts may run. Attribute handlers are denied
     // explicitly, so a malformed manifest cannot turn a filename into
     // executable markup even if an escaping regression slips in later.
@@ -56,7 +99,7 @@ func renderShareHTML(title: String, items: [ManifestItem]) -> String {
         "worker-src 'none'",
     ].joined(separator: "; ")
 
-    let blocks = items.map { item -> String in
+    let blocks = usesGallery ? renderImageGallery(items) : items.map { item -> String in
         let fileURL = escapeHTML(encodedRelativeObjectPath(item.file))
         let media: String
         switch item.kind {
@@ -144,6 +187,8 @@ func renderShareHTML(title: String, items: [ManifestItem]) -> String {
         </figure>
         """
     }.joined(separator: "\n")
+    let contentClass = usesGallery ? "share-content gallery-content" : "share-content"
+    let lightbox = usesGallery ? "\n\(imageGalleryLightbox)" : ""
 
     let needsMarkdown = items.contains { $0.kind == .markdown && $0.size < 2_000_000 }
     let cdnScripts = needsMarkdown ? """
@@ -170,9 +215,9 @@ func renderShareHTML(title: String, items: [ManifestItem]) -> String {
     <button class="closer" aria-label="Close">
     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3l10 10M13 3 3 13"/></svg>
     </button>
-    <main class="share-content">
+    <main class="\(contentClass)">
     \(blocks)
-    </main>
+    </main>\(lightbox)
     <footer class="dropper-credit">Shared beautifully with <a href="https://dropper.page" target="_blank" rel="noopener">Dropper</a></footer>
     <script nonce="\(escapedNonce)">
     \(sharePagePlayerScript)

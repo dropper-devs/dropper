@@ -1,65 +1,161 @@
 import AppKit
 import QuartzCore
 
-/// The capture "eye candy". The choreography tells a little story: a shutter
-/// click, the raw capture is picked UP off the desktop (anticipation coil →
-/// overshoot lift), the desktop falls into a blurred dark focus a beat behind,
-/// the editor frame ASSEMBLES beneath the raised shot, and the shot SETTLES
-/// down into the frame with a landing squash. The desktop stays dimmed while
-/// you edit and only restores when the editor closes.
+/// Speed multiplier for the capture intro. 1 = baseline; 0.75 = 25% quicker.
+let captureSlowMo: Double = 0.75
+
+/// The focus scrim behind the capture flow — a SPOTLIGHT, not a blanket. It
+/// dims everything EXCEPT the captured region (a clear hole), so the subject
+/// stays visible the whole time the still is being taken. It comes up the
+/// instant a capture is CONFIRMED (before the selection overlay tears down), so
+/// the desktop never flashes bright and the subject is never obscured. Once the
+/// lifted copy appears over the hole, `closeHole()` fills the gap behind it.
 ///
-/// Layering is what makes it work: a scrim window *below* the editor (so the
-/// editor stays in focus) and a ghost window *above* it (so the shot floats
-/// over the assembling frame). Built on Core Animation for reliably smooth,
-/// orchestrated timing.
+/// Built from four opaque panels framing the hole (plain NSView frames, so
+/// there's no layer/flip coordinate ambiguity).
+@MainActor
+public final class CaptureScrim {
+    fileprivate let window: NSWindow
+    private let root: NSView
+    private var panels: [NSView] = []
+    private let holeCover: NSView
+    // Start at the selection overlay's exact dim so the hand-off is invisible;
+    // deepen only as the subject lifts out.
+    private static let selectionDim: Float = 0.40
+    private static let liftDim: Float = 0.86
+
+    /// `hole` is the captured region in global AppKit points.
+    public init(hole: CGRect) {
+        // Scope to the screen the capture is ON — not all screens — so on a
+        // multi-display setup the dim lands where the shot came from, not on
+        // whichever display the pill happens to live on.
+        let center = CGPoint(x: hole.midX, y: hole.midY)
+        let screen = NSScreen.screens.first { $0.frame.contains(center) }
+            ?? NSScreen.main ?? NSScreen.screens.first
+        let frame = screen?.frame ?? .zero
+        window = NSWindow(contentRect: frame, styleMask: .borderless,
+                          backing: .buffered, defer: false)
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.level = .floating
+        window.ignoresMouseEvents = true
+        window.hasShadow = false
+        window.animationBehavior = .none   // no system appearance animation
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+
+        root = NSView(frame: CGRect(origin: .zero, size: frame.size))
+        window.contentView = root
+
+        // Window-local (bottom-left) hole, clamped on-screen.
+        let bounds = root.bounds
+        let holeLocal = CGRect(x: hole.minX - frame.minX, y: hole.minY - frame.minY,
+                               width: hole.width, height: hole.height).intersection(bounds)
+        let W = bounds.width, H = bounds.height
+        for r in [
+            CGRect(x: 0, y: 0, width: max(0, holeLocal.minX), height: H),                       // left
+            CGRect(x: holeLocal.maxX, y: 0, width: max(0, W - holeLocal.maxX), height: H),       // right
+            CGRect(x: holeLocal.minX, y: 0, width: holeLocal.width, height: max(0, holeLocal.minY)),          // below
+            CGRect(x: holeLocal.minX, y: holeLocal.maxY, width: holeLocal.width, height: max(0, H - holeLocal.maxY)), // above
+        ] {
+            panels.append(Self.panel(frame: r, opacity: Self.selectionDim))
+        }
+        // Fills the hole as the subject lifts out (starts invisible).
+        holeCover = Self.panel(frame: holeLocal, opacity: 0)
+        panels.forEach(root.addSubview)
+        root.addSubview(holeCover)
+
+        window.alphaValue = 1
+        window.orderFrontRegardless()
+    }
+
+    private static func panel(frame: CGRect, opacity: Float) -> NSView {
+        let view = NSView(frame: frame)
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor.black.cgColor
+        view.layer?.opacity = opacity
+        return view
+    }
+
+    /// Deepens the dim and fills the hole as the subject lifts out — the
+    /// dramatic darkening happens WITH the lift, not at the hand-off.
+    func deepen(duration: CFTimeInterval = 0.5 * captureSlowMo) {
+        for panel in panels { Self.animateOpacity(panel, to: Self.liftDim, duration) }
+        Self.animateOpacity(holeCover, to: Self.liftDim, duration)
+    }
+
+    private static func animateOpacity(_ view: NSView, to value: Float,
+                                       _ duration: CFTimeInterval) {
+        guard let layer = view.layer else { return }
+        let anim = CABasicAnimation(keyPath: "opacity")
+        anim.fromValue = layer.opacity
+        anim.toValue = value
+        anim.duration = duration
+        anim.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        anim.fillMode = .forwards
+        anim.isRemovedOnCompletion = false
+        layer.opacity = value
+        layer.add(anim, forKey: "deepen")
+    }
+
+    /// Puts the editor above the scrim so it stays in focus while the desktop
+    /// behind it is dimmed.
+    fileprivate func placeEditorAbove(_ editorWindow: NSWindow) {
+        editorWindow.level = .floating
+        editorWindow.order(.above, relativeTo: window.windowNumber)
+    }
+
+    /// Fades the desktop back in.
+    public func fadeOut() {
+        let window = self.window
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.9 * captureSlowMo
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            window.animator().alphaValue = 0
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.95 * captureSlowMo) {
+            window.orderOut(nil)
+        }
+    }
+}
+
+/// The capture "eye candy". The desktop is already dimmed (the scrim came up at
+/// capture-confirm); this adds the story: the raw capture is picked UP off the
+/// desktop (anticipation coil → overshoot lift) while the editor frame ASSEMBLES
+/// beneath it, then the shot SETTLES down into the frame with a landing squash —
+/// and once it lands, the desktop fades back in. Built on Core Animation for
+/// reliably smooth, orchestrated timing.
 @MainActor
 public enum CaptureIntro {
-    /// Returns a `dismiss` closure — call it when the editor closes to restore
-    /// the desktop. `screenRect`/`finalFrame` are global AppKit points.
+    /// Returns a `dismiss` closure — call it if the editor closes before the
+    /// intro finishes. `screenRect`/`finalFrame` are global AppKit points.
     @discardableResult
     public static func play(
-        image: CGImage, screenRect: CGRect, isFullScreen: Bool,
-        finalFrame: CGRect, editorWindow: NSWindow, present: @escaping () -> Void
+        scrim: CaptureScrim, image: CGImage, screenRect: CGRect,
+        isFullScreen: Bool, finalFrame: CGRect, editorWindow: NSWindow,
+        present: @escaping () -> Void, reveal: @escaping () -> Void,
+        onLanded: @escaping () -> Void
     ) -> () -> Void {
-        let union = NSScreen.screens.reduce(CGRect.null) { $0.union($1.frame) }
-        guard !union.isNull, screenRect.width > 1, finalFrame.width > 1 else {
-            present(); return {}
+        // Scope to the capture's own screen (see CaptureScrim) — desktop-aware.
+        let captureCenter = CGPoint(x: screenRect.midX, y: screenRect.midY)
+        let region = (NSScreen.screens.first { $0.frame.contains(captureCenter) }
+            ?? NSScreen.main ?? NSScreen.screens.first)?.frame ?? .zero
+        guard region.width > 1, screenRect.width > 1, finalFrame.width > 1 else {
+            present(); return { scrim.fadeOut() }
         }
 
         // Global AppKit (bottom-left) → flipped local (top-left, y-down).
         func local(_ r: CGRect) -> CGRect {
-            CGRect(x: r.minX - union.minX, y: union.maxY - r.maxY,
+            CGRect(x: r.minX - region.minX, y: region.maxY - r.maxY,
                    width: r.width, height: r.height)
         }
         func center(_ r: CGRect) -> CGPoint { CGPoint(x: r.midX, y: r.midY) }
 
-        // --- Scrim window: blurred, dark, cool. Sits BELOW the editor. ---
-        let scrim = overlayWindow(union, level: .floating)
-        let scrimRoot = NSView(frame: CGRect(origin: .zero, size: union.size))
-        scrimRoot.autoresizingMask = [.width, .height]
-        let blur = NSVisualEffectView(frame: scrimRoot.bounds)
-        blur.autoresizingMask = [.width, .height]
-        blur.material = .fullScreenUI
-        blur.blendingMode = .behindWindow
-        blur.state = .active
-        blur.appearance = NSAppearance(named: .darkAqua)
-        let tint = NSView(frame: scrimRoot.bounds)
-        tint.autoresizingMask = [.width, .height]
-        tint.wantsLayer = true
-        // ~#0B0B0F, cool and deep, over the blur — not a flat pure black.
-        tint.layer?.backgroundColor = NSColor(red: 0.043, green: 0.043,
-                                              blue: 0.062, alpha: 0.62).cgColor
-        scrimRoot.addSubview(blur)
-        scrimRoot.addSubview(tint)
-        scrim.contentView = scrimRoot
-        scrim.alphaValue = 0
-
-        // --- Ghost window: the shot + shutter flash. Sits ABOVE the editor. ---
-        let ghostWindow = overlayWindow(union, level: .screenSaver)
-        let root = FlippedView(frame: CGRect(origin: .zero, size: union.size))
+        // Ghost window: the shot itself, ABOVE the editor.
+        let ghostWindow = overlayWindow(region, level: .screenSaver)
+        let root = FlippedView(frame: CGRect(origin: .zero, size: region.size))
         root.wantsLayer = true
         ghostWindow.contentView = root
-        guard let rootLayer = root.layer else { present(); return {} }
+        guard let rootLayer = root.layer else { present(); return { scrim.fadeOut() } }
 
         let start = local(screenRect)
         let end = local(finalFrame)
@@ -68,8 +164,18 @@ public enum CaptureIntro {
                             height: start.height * Timing.liftScale)
 
         let ghost = CALayer()
+        // Forbid ALL implicit animations: setting the layer's model values (its
+        // final position/size, shadow, etc.) must NOT auto-animate, or the copy
+        // slides into place instead of appearing pinned over the subject. Only
+        // our explicit keyframes drive it.
+        ghost.actions = ["position": NSNull(), "bounds": NSNull(), "transform": NSNull(),
+                         "opacity": NSNull(), "contents": NSNull(), "cornerRadius": NSNull(),
+                         "shadowOpacity": NSNull(), "shadowRadius": NSNull(),
+                         "shadowOffset": NSNull()]
         ghost.contents = image
-        ghost.contentsGravity = .resize
+        // Aspect-preserving: the start/lifted/end rects all share the image's
+        // aspect, so this fills exactly — and never squishes if they're a hair off.
+        ghost.contentsGravity = .resizeAspect
         ghost.anchorPoint = CGPoint(x: 0.5, y: 0.5)
         ghost.bounds = CGRect(origin: .zero, size: start.size)
         ghost.position = center(start)
@@ -80,12 +186,13 @@ public enum CaptureIntro {
         ghost.shadowOpacity = 0
         rootLayer.addSublayer(ghost)
 
-        scrim.orderFrontRegardless()
         ghostWindow.orderFrontRegardless()
+        // FIRST the dim deepens to black while the copy sits still on top of the
+        // original (filling the hole behind it); only once the screen is dark
+        // does the copy lift — so the copy and the original are never both seen.
+        let deepenDuration = 0.5 * captureSlowMo
+        scrim.deepen(duration: deepenDuration)
 
-        // ---- The lift/settle path (area & window) ----
-        // A full-screen shot can't rise, so it just eases down into the frame.
-        let overshoot = CAMediaTimingFunction(controlPoints: 0.34, 1.56, 0.64, 1)
         let easeOut = CAMediaTimingFunction(name: .easeOut)
         let easeInOut = CAMediaTimingFunction(name: .easeInEaseOut)
 
@@ -97,105 +204,104 @@ public enum CaptureIntro {
         let ghostDuration: CFTimeInterval
 
         if isFullScreen {
-            positions = [center(start), center(end)]
-            sizes = [NSValue(size: start.size), NSValue(size: end.size)]
-            squashes = [squash(1), squash(0.97)]
-            keyTimes = [0, 1]
-            timings = [easeInOut]
-            ghostDuration = 0.5
+            // Shrinks into the frame with a landing squash that RETURNS to 1 —
+            // ending on a squash would leave it permanently out of aspect.
+            positions = [center(start), center(end), center(end)]
+            sizes = [NSValue(size: start.size), NSValue(size: end.size), NSValue(size: end.size)]
+            squashes = [squash(1), squash(0.96), squash(1)]
+            keyTimes = [0, 0.82, 1]
+            timings = [easeInOut, easeOut]
+            ghostDuration = 0.6 * captureSlowMo
         } else {
-            positions = [center(start), center(start), center(lifted),
-                         center(lifted), center(end), center(end)]
-            sizes = [NSValue(size: start.size), NSValue(size: start.size),
-                     NSValue(size: lifted.size), NSValue(size: lifted.size),
+            // Just lifts out — no anticipation coil, no overshoot spring. It
+            // eases up and grows a touch, hangs, settles into the frame, and
+            // gets a gentle landing squash only at the very end.
+            positions = [center(start), center(lifted), center(lifted),
+                         center(end), center(end), center(end)]
+            sizes = [NSValue(size: start.size), NSValue(size: lifted.size),
+                     NSValue(size: lifted.size), NSValue(size: end.size),
                      NSValue(size: end.size), NSValue(size: end.size)]
-            // Anticipation coil, release, then a landing squash on arrival.
-            squashes = [squash(1), squash(0.95), squash(1), squash(1),
-                        squash(0.94), squash(1)]
-            keyTimes = [0, 0.10, 0.50, 0.58, 0.88, 1.0]
-            timings = [easeOut, overshoot, easeInOut, easeInOut, easeOut]
+            // Settles in with a gentle landing squash — compress, then pop back
+            // to full height as it lands in the frame.
+            squashes = [squash(1), squash(1), squash(1), squash(1),
+                        squash(0.95), squash(1)]
+            keyTimes = [0, 0.42, 0.50, 0.80, 0.90, 1.0]
+            timings = [easeOut, easeInOut, easeInOut, easeInOut, easeOut]
             ghostDuration = Timing.ghost
         }
 
         addKeyframe(ghost, "position", positions.map { NSValue(point: $0) },
-                    keyTimes, timings, ghostDuration)
-        addKeyframe(ghost, "bounds.size", sizes, keyTimes, timings, ghostDuration)
-        addKeyframe(ghost, "transform", squashes, keyTimes, timings, ghostDuration)
+                    keyTimes, timings, ghostDuration, delay: deepenDuration)
+        addKeyframe(ghost, "bounds.size", sizes, keyTimes, timings, ghostDuration,
+                    delay: deepenDuration)
+        addKeyframe(ghost, "transform", squashes, keyTimes, timings, ghostDuration,
+                    delay: deepenDuration)
         ghost.position = center(end)
         ghost.bounds = CGRect(origin: .zero, size: end.size)
 
-        // ---- Shadow: grows, softens, offsets — and LAGS the lift ~50ms, so the
-        // object reads as levitating rather than sliding. ----
-        let shadowRadius = isFullScreen ? [8.0, 8.0] : [8.0, 8.0, 40.0, 40.0, 22.0, 18.0]
-        let shadowOpacity = isFullScreen ? [0.0, 0.28] : [0.0, 0.0, 0.45, 0.45, 0.34, 0.3]
-        let shadowY = isFullScreen ? [6.0, 6.0] : [6.0, 6.0, 34.0, 34.0, 20.0, 16.0]
+        // Shadow: grows, softens, offsets — and LAGS the lift ~50ms.
+        let shadowRadius = isFullScreen ? [8.0, 34.0, 30.0] : [8.0, 40.0, 40.0, 24.0, 22.0, 18.0]
+        let shadowOpacity = isFullScreen ? [0.0, 0.4, 0.34] : [0.0, 0.45, 0.45, 0.35, 0.33, 0.3]
+        let shadowY = isFullScreen ? [6.0, 28.0, 24.0] : [6.0, 34.0, 34.0, 22.0, 20.0, 16.0]
         addKeyframe(ghost, "shadowRadius", shadowRadius.map { $0 as NSNumber },
-                    keyTimes, timings, ghostDuration, lag: 0.05)
+                    keyTimes, timings, ghostDuration, delay: deepenDuration,
+                    lag: 0.05 * captureSlowMo)
         addKeyframe(ghost, "shadowOpacity", shadowOpacity.map { $0 as NSNumber },
-                    keyTimes, timings, ghostDuration, lag: 0.05)
+                    keyTimes, timings, ghostDuration, delay: deepenDuration,
+                    lag: 0.05 * captureSlowMo)
         addKeyframe(ghost, "shadowOffset",
                     shadowY.map { NSValue(size: CGSize(width: 0, height: $0)) },
-                    keyTimes, timings, ghostDuration, lag: 0.05)
+                    keyTimes, timings, ghostDuration, delay: deepenDuration,
+                    lag: 0.05 * captureSlowMo)
         ghost.shadowRadius = CGFloat(shadowRadius.last ?? 8)
         ghost.shadowOpacity = Float(shadowOpacity.last ?? 0)
         ghost.shadowOffset = CGSize(width: 0, height: shadowY.last ?? 6)
 
-        // ---- The desktop falls into focus a BEAT BEHIND the lift. Deferred one
-        // runloop tick so the window is committed at alpha 0 first — otherwise
-        // the blur pops in at full for a frame (the flash). ----
-        DispatchQueue.main.async {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = Timing.scrimRamp
-                context.timingFunction = easeOut
-                scrim.animator().alphaValue = 1
-            }
-        }
-
-        // ---- The editor ASSEMBLES beneath the raised shot, mid-lift. ----
-        let editorAt = isFullScreen ? 0.28 : Timing.editorAssemble
+        // The editor ASSEMBLES beneath the raised shot, mid-lift, above the scrim.
+        let editorAt = deepenDuration
+            + (isFullScreen ? 0.28 * captureSlowMo : Timing.editorAssemble)
         DispatchQueue.main.asyncAfter(deadline: .now() + editorAt) {
             present()
-            editorWindow.level = .floating   // above the scrim, below the ghost
+            scrim.placeEditorAbove(editorWindow)
         }
 
-        // The desktop fades back in once the capture has landed in the frame.
-        // Guarded so it runs once, whether triggered by the settle or an early
-        // editor close.
+        // Once settled, the shot fades onto the canvas and the desktop returns.
         var restored = false
         func restoreDesktop() {
             guard !restored else { return }
             restored = true
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.9
-                context.timingFunction = easeInOut
-                scrim.animator().alphaValue = 0
-            }
-            // Keep the editor above the still-fading scrim, then settle it back.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.95) {
-                scrim.orderOut(nil)
+            scrim.fadeOut()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.95 * captureSlowMo) {
                 editorWindow.level = .normal
             }
         }
 
-        // ---- Once settled, the shot fades onto the editor's canvas, then the
-        // desktop fades back in — the capture has landed in the frame. ----
-        DispatchQueue.main.asyncAfter(deadline: .now() + ghostDuration - 0.02) {
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + deepenDuration + ghostDuration - 0.02 * captureSlowMo) {
+            // The ghost has landed at full size — hand off to the editor's canvas
+            // now (never both at once), then fade the ghost onto it.
+            reveal()
             let fade = CABasicAnimation(keyPath: "opacity")
             fade.fromValue = 1
             fade.toValue = 0
-            fade.duration = 0.2
+            fade.duration = 0.2 * captureSlowMo
             fade.timingFunction = easeInOut
             fade.fillMode = .forwards
             fade.isRemovedOnCompletion = false
             ghost.opacity = 0
             ghost.add(fade, forKey: "settleFade")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.24 * captureSlowMo) {
                 ghostWindow.orderOut(nil)
                 restoreDesktop()
             }
         }
 
-        // Safety: if the editor is dismissed before the intro finishes, restore.
+        // On the LANDING — the instant it touches down in the frame (keyTime
+        // ~0.80), after the descent and before the spring-up.
+        DispatchQueue.main.asyncAfter(deadline: .now() + deepenDuration + ghostDuration * 0.8) {
+            onLanded()
+        }
+
         return {
             restoreDesktop()
             ghostWindow.orderOut(nil)
@@ -203,11 +309,10 @@ public enum CaptureIntro {
     }
 
     private enum Timing {
-        static let ghost: CFTimeInterval = 0.95
-        static let scrimRamp: CFTimeInterval = 0.32
-        static let editorAssemble: CFTimeInterval = 0.46
-        static let liftHeight: CGFloat = 56
-        static let liftScale: CGFloat = 1.06
+        static let ghost: CFTimeInterval = 0.95 * captureSlowMo
+        static let editorAssemble: CFTimeInterval = 0.46 * captureSlowMo
+        static let liftHeight: CGFloat = 56       // spatial — not scaled
+        static let liftScale: CGFloat = 1.06      // spatial — not scaled
     }
 
     private static func squash(_ y: CGFloat) -> NSValue {
@@ -217,16 +322,19 @@ public enum CaptureIntro {
     private static func addKeyframe(
         _ layer: CALayer, _ keyPath: String, _ values: [Any],
         _ keyTimes: [NSNumber], _ timings: [CAMediaTimingFunction],
-        _ duration: CFTimeInterval, lag: CFTimeInterval = 0
+        _ duration: CFTimeInterval, delay: CFTimeInterval = 0, lag: CFTimeInterval = 0
     ) {
         let anim = CAKeyframeAnimation(keyPath: keyPath)
         anim.values = values
         anim.keyTimes = keyTimes
         anim.timingFunctions = timings
         anim.duration = duration
-        anim.fillMode = .forwards
+        // .both so it holds the START value during the delay (the shot sits
+        // still while the screen darkens) and the END value after.
+        anim.fillMode = .both
         anim.isRemovedOnCompletion = false
-        if lag > 0 { anim.beginTime = CACurrentMediaTime() + lag }
+        let offset = delay + lag
+        if offset > 0 { anim.beginTime = CACurrentMediaTime() + offset }
         layer.add(anim, forKey: keyPath)
     }
 
@@ -238,6 +346,9 @@ public enum CaptureIntro {
         window.level = level
         window.ignoresMouseEvents = true
         window.hasShadow = false
+        // No system "pop into place" appearance animation — the ghost must appear
+        // dead-still, pinned over the subject; only our keyframes move it.
+        window.animationBehavior = .none
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         return window
     }

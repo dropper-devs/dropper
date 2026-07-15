@@ -15,8 +15,8 @@ struct DropPillActions {
     var isListOpen: () -> Bool   // the popover owns its own links; don't revert those
 }
 
-/// An always-visible pill hanging just below the menu bar: drop files onto it
-/// to upload, watch progress, then copy the link. A floating companion to the
+/// An optional pill hanging just below the menu bar: drop files onto it to
+/// upload, watch progress, then copy the link. A floating companion to the
 /// menu-bar icon's own drop target, driven by the same shared `UIState`.
 @MainActor
 final class DropPillController: NSObject {
@@ -25,6 +25,7 @@ final class DropPillController: NSObject {
     // clear room on every side and never clips against the window's edge.
     static let size = NSSize(width: 380, height: 132)
     private static let originKey = "DropPillOrigin"
+    private static let visibilityKey = "DropPillVisible"
     private let panel: NSPanel
     private var lastMoveTime: TimeInterval = 0
 
@@ -33,6 +34,12 @@ final class DropPillController: NSObject {
     var wasJustDragged: Bool {
         ProcessInfo.processInfo.systemUptime - lastMoveTime < 0.3
     }
+
+    static var shouldShow: Bool {
+        UserDefaults.standard.object(forKey: visibilityKey) as? Bool ?? true
+    }
+
+    var isVisible: Bool { panel.isVisible }
 
     init(state: UIState, actions: DropPillActions) {
         panel = NSPanel(
@@ -72,22 +79,37 @@ final class DropPillController: NSObject {
 
     func hide() { panel.orderOut(nil) }
 
+    func setVisible(_ visible: Bool) {
+        UserDefaults.standard.set(visible, forKey: Self.visibilityKey)
+        if visible { show() } else { hide() }
+    }
+
     /// Restores the user's chosen spot, or defaults to just below the menu bar.
     private func placeInitially() {
-        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
-        let visible = screen.visibleFrame
-        let origin = Self.savedOrigin() ?? NSPoint(
-            x: screen.frame.midX - Self.size.width / 2,
-            y: visible.maxY - Self.size.height)
-        panel.setFrame(Self.clamp(NSRect(origin: origin, size: Self.size), to: visible),
-                       display: true)
+        guard let defaultScreen = NSScreen.main ?? NSScreen.screens.first else { return }
+        let frame: NSRect
+        let screen: NSScreen
+        if let origin = Self.savedOrigin() {
+            frame = NSRect(origin: origin, size: Self.size)
+            screen = Self.screen(containing: frame) ?? defaultScreen
+        } else {
+            let visible = defaultScreen.visibleFrame
+            frame = NSRect(
+                x: defaultScreen.frame.midX - Self.size.width / 2,
+                y: visible.maxY - Self.size.height,
+                width: Self.size.width,
+                height: Self.size.height)
+            screen = defaultScreen
+        }
+        panel.setFrame(Self.clamp(frame, to: screen.visibleFrame), display: true)
     }
 
     /// Keeps the pill on-screen when the display arrangement changes — without
     /// yanking it back to center, since its position is the user's to choose.
     @objc private func screensChanged() {
-        guard let visible = (panel.screen ?? NSScreen.main)?.visibleFrame else { return }
-        panel.setFrame(Self.clamp(panel.frame, to: visible), display: true)
+        guard let screen = Self.screen(containing: panel.frame)
+                ?? NSScreen.main ?? NSScreen.screens.first else { return }
+        panel.setFrame(Self.clamp(panel.frame, to: screen.visibleFrame), display: true)
     }
 
     @objc private func windowMoved() {
@@ -99,6 +121,20 @@ final class DropPillController: NSObject {
     private static func savedOrigin() -> NSPoint? {
         guard let string = UserDefaults.standard.string(forKey: originKey) else { return nil }
         return NSPointFromString(string)
+    }
+
+    /// Global window coordinates identify the display as long as it is still
+    /// connected. Choose that display before clamping the restored position.
+    private static func screen(containing frame: NSRect) -> NSScreen? {
+        let candidates = NSScreen.screens.map { screen in
+            let intersection = screen.frame.intersection(frame)
+            let area = intersection.isNull ? 0 : intersection.width * intersection.height
+            return (screen: screen, area: area)
+        }
+        guard let best = candidates.max(by: { $0.area < $1.area }), best.area > 0 else {
+            return nil
+        }
+        return best.screen
     }
 
     private static func clamp(_ frame: NSRect, to visible: NSRect) -> NSRect {
@@ -137,7 +173,7 @@ struct DropPillView: View {
     /// Apple's spring vocabulary (WWDC "Animate with springs"): describe the
     /// motion by duration + bounce, not a raw damping ratio. A snappy spring
     /// with a slight overshoot is exactly the Dynamic Island's morph feel.
-    private static let morph = Animation.spring(duration: 0.4, bounce: 0.2)
+    private static let morph = Animation.spring(duration: 0.3, bounce: 0.2)
 
     /// One id per distinct visual state; changing it drives the blur-morph
     /// between states. Progress ticks keep the same id and update in place.
@@ -250,7 +286,7 @@ struct DropPillView: View {
         switch visualKey {
         case 6: return CGSize(width: 320, height: 72)   // capture launcher
         case 2: return CGSize(width: 300, height: 82)   // drop target
-        case 3: return CGSize(width: 344, height: 90)   // collection / items split
+        case 3: return CGSize(width: 300, height: 82)   // drop target, divided in half
         case 1: return CGSize(width: 300, height: 64)   // uploading
         case 4: return CGSize(width: 58, height: 32)    // links, at rest — small
         case 5: return CGSize(width: currentLinkSegmentCount >= 3 ? 300 : 224,
@@ -403,11 +439,28 @@ struct DropPillView: View {
     /// once two or more files are in the drag.
     @ViewBuilder private var dropContent: some View {
         if dragCount > 1 {
-            HStack(spacing: 9) {
+            let shape = Capsule()
+            HStack(spacing: 4) {
                 splitZone("Upload collection",
                           icon: "rectangle.stack.badge.plus", active: !separateSide)
                 splitZone("Upload \(dragCount) new items",
                           icon: "square.on.square", active: separateSide)
+            }
+            .background(shape.fill(Color.accentColor.opacity(0.06)))
+            .clipShape(shape)
+            .overlay {
+                shape.strokeBorder(
+                    style: StrokeStyle(lineWidth: 1.5, dash: [5]))
+                    .foregroundStyle(Color.accentColor.opacity(0.65))
+                GeometryReader { geometry in
+                    Path { path in
+                        let x = geometry.size.width / 2
+                        path.move(to: CGPoint(x: x, y: 0))
+                        path.addLine(to: CGPoint(x: x, y: geometry.size.height))
+                    }
+                    .stroke(Color.accentColor.opacity(0.65),
+                            style: StrokeStyle(lineWidth: 1.5, dash: [5]))
+                }
             }
             .padding(10)
         } else {
@@ -431,19 +484,26 @@ struct DropPillView: View {
     }
 
     private func uploadingContent(name: String, progress: Double) -> some View {
-        HStack(spacing: 13) {
+        let finishing = progress >= 0.95
+        return HStack(spacing: 13) {
             // The ring doubles as the cancel button: hover turns it red.
             Button {
                 actions.cancelUpload()
             } label: {
                 ZStack {
                     Circle().stroke(Color.white.opacity(0.15), lineWidth: 3)
-                    Circle()
-                        .trim(from: 0, to: progress)
-                        .stroke(cancelHover ? Color.red : Color.accentColor,
-                                style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                        .animation(.easeOut(duration: 0.3), value: progress)
+                    if finishing {
+                        SpinningProgressArc(
+                            color: cancelHover ? Color.red : Color.accentColor,
+                            lineWidth: 3)
+                    } else {
+                        Circle()
+                            .trim(from: 0, to: progress)
+                            .stroke(cancelHover ? Color.red : Color.accentColor,
+                                    style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                            .animation(.easeOut(duration: 0.3), value: progress)
+                    }
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(cancelHover ? Color.red : .white.opacity(0.6))
@@ -461,7 +521,7 @@ struct DropPillView: View {
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.white)
                     .lineLimit(1).truncationMode(.middle)
-                Text("\(Int(progress * 100))%")
+                Text(finishing ? "Finishing…" : "\(Int(progress * 100))%")
                     .font(.system(size: 11))
                     .foregroundStyle(.white.opacity(0.5))
             }
@@ -545,8 +605,7 @@ struct DropPillView: View {
     }
 
     private func splitZone(_ label: String, icon: String, active: Bool) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 13, style: .continuous)
-        return VStack(spacing: 6) {
+        VStack(spacing: 6) {
             Image(systemName: icon).font(.system(size: 17))
             Text(label)
                 .font(.system(size: 11, weight: .medium))
@@ -555,10 +614,7 @@ struct DropPillView: View {
         .foregroundStyle(active ? Color.accentColor : .white.opacity(0.55))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, 6)
-        .background(shape.fill(active ? Color.accentColor.opacity(0.12)
-                                      : Color.white.opacity(0.05)))
-        .overlay(shape.strokeBorder(active ? Color.accentColor.opacity(0.8)
-                                           : Color.white.opacity(0.10), lineWidth: 1))
+        .background(active ? Color.accentColor.opacity(0.12) : Color.clear)
     }
 }
 

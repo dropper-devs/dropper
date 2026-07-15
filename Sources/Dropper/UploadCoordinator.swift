@@ -149,9 +149,11 @@ final class UploadCoordinator {
         }
 
         let shareID = ShareNaming.shareID(firstFile: first.fileName)
+        let gallery = ConfigStore.imageGallery()
         return try await store.withShareMutation(id: shareID) { client, keys in
             try await Self.uploadPrepared(
-                prepared, manifest: Manifest(items: []), shareID: shareID,
+                prepared, manifest: Manifest(items: [], gallery: gallery),
+                shareID: shareID,
                 keys: keys, client: client, labelPrefix: labelPrefix,
                 show: show)
         }

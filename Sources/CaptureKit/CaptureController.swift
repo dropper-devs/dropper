@@ -52,26 +52,32 @@ public final class CaptureController: NSObject {
     private var pickerContinuation: CheckedContinuation<Void, Error>?
     private var pickerResult: SCContentFilter?
 
-    public func capture(mode: CaptureMode) async throws -> CaptureResult? {
+    /// `onWillCapture` fires the instant a target is CONFIRMED — before the
+    /// selection overlay tears down and before the (async) still is taken — with
+    /// the captured region in global AppKit points, so the host can spotlight it
+    /// (dim around it) and keep the subject visible the whole time.
+    public func capture(mode: CaptureMode,
+                        onWillCapture: @escaping (CGRect) -> Void) async throws -> CaptureResult? {
         guard Self.requestScreenRecordingAccessIfNeeded() else {
             throw CaptureError.permissionDenied
         }
         switch mode {
-        case .display: return try await captureDisplay()
-        case .area: return try await captureArea()
-        case .window: return try await captureWindow()
+        case .display: return try await captureDisplay(onWillCapture: onWillCapture)
+        case .area: return try await captureArea(onWillCapture: onWillCapture)
+        case .window: return try await captureWindow(onWillCapture: onWillCapture)
         }
     }
 
     // MARK: - Display
 
-    private func captureDisplay() async throws -> CaptureResult? {
+    private func captureDisplay(onWillCapture: @escaping (CGRect) -> Void) async throws -> CaptureResult? {
         let targets = Self.displayTargets()
         guard !targets.isEmpty else { throw CaptureError.noDisplays }
 
         let selected: DisplaySelectionOverlay.Target? = await withCheckedContinuation { continuation in
             displayOverlay.show(
                 targets: targets,
+                onWillCapture: onWillCapture,
                 onSelect: { continuation.resume(returning: $0) },
                 onCancel: { continuation.resume(returning: nil) })
         }
@@ -91,13 +97,14 @@ public final class CaptureController: NSObject {
 
     // MARK: - Area
 
-    private func captureArea() async throws -> CaptureResult? {
+    private func captureArea(onWillCapture: @escaping (CGRect) -> Void) async throws -> CaptureResult? {
         let targets = Self.displayTargets()
         guard !targets.isEmpty else { throw CaptureError.noDisplays }
 
         let selected: AreaSelectionOverlay.Selection? = await withCheckedContinuation { continuation in
             areaOverlay.show(
                 targets: targets,
+                onWillCapture: onWillCapture,
                 onSelect: { continuation.resume(returning: $0) },
                 onCancel: { continuation.resume(returning: nil) })
         }
@@ -128,7 +135,7 @@ public final class CaptureController: NSObject {
 
     // MARK: - Window
 
-    private func captureWindow() async throws -> CaptureResult? {
+    private func captureWindow(onWillCapture: @escaping (CGRect) -> Void) async throws -> CaptureResult? {
         try await withCheckedThrowingContinuation { continuation in
             pickerResult = nil
             pickerContinuation = continuation
@@ -147,8 +154,10 @@ public final class CaptureController: NSObject {
         pickerResult = nil
 
         let info = SCShareableContent.info(for: filter)
-        let rect = info.contentRect.isEmpty ? filter.contentRect : info.contentRect
-        guard rect.width >= 1, rect.height >= 1 else { throw CaptureError.captureFailed }
+        let contentRect = info.contentRect.isEmpty ? filter.contentRect : info.contentRect
+        guard contentRect.width >= 1, contentRect.height >= 1 else {
+            throw CaptureError.captureFailed
+        }
         let scale: CGFloat = if info.pointPixelScale > 0 {
             CGFloat(info.pointPixelScale)
         } else if filter.pointPixelScale > 0 {
@@ -156,22 +165,52 @@ public final class CaptureController: NSObject {
         } else {
             NSScreen.main?.backingScaleFactor ?? 2
         }
-
         let configuration = Self.stillConfiguration()
-        configuration.width = max(1, Int((rect.width * scale).rounded(.up)))
-        configuration.height = max(1, Int((rect.height * scale).rounded(.up)))
+        configuration.width = max(1, Int((contentRect.width * scale).rounded(.up)))
+        configuration.height = max(1, Int((contentRect.height * scale).rounded(.up)))
+        let title = await Self.capturedWindowTitle(filter: filter, contentRect: contentRect)
 
-        let title = await Self.capturedWindowTitle(filter: filter, contentRect: rect)
+        // The system picker's toolbar shoves every window DOWN while it's open,
+        // so `contentRect` is a shoved-down position. Note where the window sits
+        // now, take the shot (the content is position-independent), then wait for
+        // the windows to spring back and re-measure by window ID — so the ghost
+        // lands on the RESTING window, not where the toolbar had pushed it. The
+        // shift between the two measurements is applied to the content rect.
+        let windowID: CGWindowID?
+        if #available(macOS 15.2, *) {
+            windowID = filter.includedWindows.first?.windowID
+        } else {
+            windowID = nil   // no re-measure available; falls back to the picker rect
+        }
+        let shovedBounds = windowID.flatMap { Self.windowBounds($0) }
         let image = try await Self.captureImage(filter: filter, configuration: configuration)
-        // `rect` is global CoreGraphics points (top-left, primary-display
-        // origin). Flip Y by the primary display's height to reach AppKit's
-        // bottom-left global space.
+
+        var restingContent = contentRect
+        if let windowID, let shovedBounds, let settled = Self.windowBounds(windowID) {
+            restingContent = contentRect.offsetBy(dx: settled.minX - shovedBounds.minX,
+                                                  dy: settled.minY - shovedBounds.minY)
+        }
+
+        // CG (top-left, primary-display origin) → AppKit global (bottom-left).
         let primaryHeight = (NSScreen.screens.first { $0.frame.origin == .zero }?
-            .frame.height) ?? NSScreen.main?.frame.height ?? rect.maxY
-        let screenRect = CGRect(x: rect.minX, y: primaryHeight - rect.maxY,
-                                width: rect.width, height: rect.height)
+            .frame.height) ?? NSScreen.main?.frame.height ?? restingContent.maxY
+        let screenRect = CGRect(x: restingContent.minX, y: primaryHeight - restingContent.maxY,
+                                width: restingContent.width, height: restingContent.height)
+        onWillCapture(screenRect)
         return CaptureResult(image: image, scale: scale, title: title,
                              screenRect: screenRect, isFullScreen: false)
+    }
+
+    /// A window's current on-screen bounds by ID, in global CoreGraphics points
+    /// (top-left origin) — used to re-measure once the picker's toolbar stops
+    /// displacing windows.
+    private static func windowBounds(_ windowID: CGWindowID) -> CGRect? {
+        guard let list = CGWindowListCopyWindowInfo([.optionIncludingWindow], windowID)
+                as? [[String: Any]],
+              let boundsDict = list.first?[kCGWindowBounds as String] as? NSDictionary,
+              let bounds = CGRect(dictionaryRepresentation: boundsDict as CFDictionary)
+        else { return nil }
+        return bounds
     }
 
     private static func capturedWindowTitle(

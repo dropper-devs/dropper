@@ -62,6 +62,7 @@ final class DisplaySelectionOverlay: SelectionOverlayPresenter {
 
     func show(
         targets: [Target],
+        onWillCapture: @escaping (CGRect) -> Void,
         onSelect: @escaping (Target) -> Void,
         onCancel: @escaping () -> Void
     ) {
@@ -69,7 +70,7 @@ final class DisplaySelectionOverlay: SelectionOverlayPresenter {
             DisplaySelectionOverlayView(
                 target: target,
                 onCapture: { [weak self] in
-                    self?.select(target, onSelect: onSelect)
+                    self?.select(target, onWillCapture: onWillCapture, onSelect: onSelect)
                 },
                 onCancel: { [weak self] in
                     self?.cancel()
@@ -78,7 +79,11 @@ final class DisplaySelectionOverlay: SelectionOverlayPresenter {
         }
     }
 
-    private func select(_ target: Target, onSelect: (Target) -> Void) {
+    private func select(_ target: Target, onWillCapture: (CGRect) -> Void,
+                        onSelect: (Target) -> Void) {
+        // Spotlight the whole display (the subject is everything) BEFORE tearing
+        // the overlay down, so the desktop stays dimmed continuously.
+        onWillCapture(target.frame)
         dismiss()
         onSelect(target)
     }
@@ -93,6 +98,7 @@ final class AreaSelectionOverlay: SelectionOverlayPresenter {
 
     func show(
         targets: [DisplaySelectionOverlay.Target],
+        onWillCapture: @escaping (CGRect) -> Void,
         onSelect: @escaping (Selection) -> Void,
         onCancel: @escaping () -> Void
     ) {
@@ -100,7 +106,8 @@ final class AreaSelectionOverlay: SelectionOverlayPresenter {
             AreaSelectionOverlayView(
                 target: target,
                 onCapture: { [weak self] rect in
-                    self?.select(rect, target: target, onSelect: onSelect)
+                    self?.select(rect, target: target,
+                                 onWillCapture: onWillCapture, onSelect: onSelect)
                 },
                 onCancel: { [weak self] in
                     self?.cancel()
@@ -112,6 +119,7 @@ final class AreaSelectionOverlay: SelectionOverlayPresenter {
     private func select(
         _ localRect: CGRect,
         target: DisplaySelectionOverlay.Target,
+        onWillCapture: (CGRect) -> Void,
         onSelect: (Selection) -> Void
     ) {
         let rect = AreaSelectionGeometry.standardizedIntegral(localRect)
@@ -119,6 +127,12 @@ final class AreaSelectionOverlay: SelectionOverlayPresenter {
             target: target,
             sourceRect: rect
         )
+        // Spotlight the selected region (display-local top-left → global AppKit)
+        // before the overlay tears down (see DisplaySelectionOverlay).
+        let f = target.frame
+        let global = CGRect(x: f.minX + rect.minX, y: f.minY + (f.height - rect.maxY),
+                            width: rect.width, height: rect.height)
+        onWillCapture(global)
         dismiss()
         onSelect(selection)
     }

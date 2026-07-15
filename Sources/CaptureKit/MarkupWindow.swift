@@ -12,6 +12,7 @@ public enum MarkupExit {
 @MainActor
 public final class MarkupWindowController: NSWindowController, NSWindowDelegate {
     private let canvas: MarkupCanvasView
+    private let imageSize: CGSize
     private var toolButtons: [NSButton] = []
     private var colorButtons: [NSButton] = []
     private var cropApplyButton: NSButton?
@@ -87,6 +88,7 @@ public final class MarkupWindowController: NSWindowController, NSWindowDelegate 
     public init(image: CGImage, scale: CGFloat, captureTitle: String,
                 onFinish: @escaping (MarkupExit) -> Void) {
         self.canvas = MarkupCanvasView(image: image, scale: scale)
+        self.imageSize = CGSize(width: image.width, height: image.height)
         self.captureTitle = captureTitle
         self.onFinish = onFinish
 
@@ -99,6 +101,8 @@ public final class MarkupWindowController: NSWindowController, NSWindowDelegate 
         window.titleVisibility = .hidden
         window.isOpaque = false
         window.backgroundColor = .clear
+        // No system appearance animation — the intro drives the grow-in itself.
+        window.animationBehavior = .none
         // Markup windows intentionally remain available to ScreenCaptureKit so
         // a later capture can include an earlier editor window.
         window.sharingType = .readOnly
@@ -152,13 +156,27 @@ public final class MarkupWindowController: NSWindowController, NSWindowDelegate 
     public func canvasScreenFrame() -> CGRect {
         guard let window else { return .zero }
         window.layoutIfNeeded()
-        return window.convertToScreen(canvas.convert(canvas.bounds, to: nil))
+        let canvasRect = window.convertToScreen(canvas.convert(canvas.bounds, to: nil))
+        // Land the intro's ghost on the IMAGE's rect (aspect-fit inside the
+        // canvas), not the canvas view's frame — otherwise it interpolates
+        // toward the canvas aspect and squishes on the way down.
+        guard imageSize.width > 0, imageSize.height > 0,
+              canvasRect.width > 0, canvasRect.height > 0 else { return canvasRect }
+        let scale = min(canvasRect.width / imageSize.width,
+                        canvasRect.height / imageSize.height)
+        let size = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+        return CGRect(x: canvasRect.midX - size.width / 2,
+                      y: canvasRect.midY - size.height / 2,
+                      width: size.width, height: size.height)
     }
 
     /// Presents the editor growing in from a slightly smaller frame while it
     /// fades up — the "window forms around the screenshot" beat of the intro.
     public func presentGrowing() {
         guard let window else { return present() }
+        // The canvas image stays hidden while the frame assembles — otherwise it
+        // sits under the intro's still-animating ghost and reads as a double.
+        canvas.alphaValue = 0
         let full = window.frame
         let start = full.insetBy(dx: full.width * 0.05, dy: full.height * 0.05)
         window.setFrame(start, display: false)
@@ -167,11 +185,19 @@ public final class MarkupWindowController: NSWindowController, NSWindowDelegate 
         window.makeFirstResponder(canvas)
         NSApp.activate(ignoringOtherApps: true)
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.3
+            context.duration = 0.3 * captureSlowMo
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             window.animator().setFrame(full, display: true)
             window.animator().alphaValue = 1
         }
+    }
+
+    /// Reveals the canvas image once the intro's ghost has landed on it. Instant,
+    /// NOT a fade: the ghost fades out on top of a now-solid canvas, so the image
+    /// is always fully opaque — no cross-fade brightness dip (the flicker) from
+    /// two identical half-transparent copies overlapping.
+    public func revealCanvas() {
+        canvas.alphaValue = 1
     }
 
     // MARK: - Layout

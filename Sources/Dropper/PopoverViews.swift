@@ -272,7 +272,8 @@ struct DropStrip: View {
     }
 
     private func uploading(name: String, progress: Double) -> some View {
-        HStack(spacing: 12) {
+        let finishing = progress >= 0.95
+        return HStack(spacing: 12) {
             // The ring is the cancel button: hover turns it red with an X.
             Button {
                 actions.cancelUpload()
@@ -280,11 +281,17 @@ struct DropStrip: View {
                 ZStack {
                     Circle()
                         .stroke(Color.secondary.opacity(0.3), lineWidth: 3)
-                    Circle()
-                        .trim(from: 0, to: progress)
-                        .stroke(cancelHover ? Color.red : Color.accentColor,
-                                style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
+                    if finishing {
+                        SpinningProgressArc(
+                            color: cancelHover ? Color.red : Color.accentColor,
+                            lineWidth: 3)
+                    } else {
+                        Circle()
+                            .trim(from: 0, to: progress)
+                            .stroke(cancelHover ? Color.red : Color.accentColor,
+                                    style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                    }
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(cancelHover ? Color.red : Color.secondary)
@@ -302,7 +309,7 @@ struct DropStrip: View {
                     .font(.callout)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Text("\(Int(progress * 100))%")
+                Text(finishing ? "Finishing…" : "\(Int(progress * 100))%")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

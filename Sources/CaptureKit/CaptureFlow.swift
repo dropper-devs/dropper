@@ -15,7 +15,8 @@ public enum CaptureFlow {
     public static func begin(
         mode: CaptureMode,
         onComplete: @escaping (URL) -> Void,
-        onFailure: @escaping (String) -> Void
+        onFailure: @escaping (String) -> Void,
+        onLanded: @escaping () -> Void = {}
     ) {
         guard controller == nil else { return }
         CaptureTempStore.removeStaleFiles()
@@ -24,10 +25,17 @@ public enum CaptureFlow {
         controller = capture
         Task { @MainActor in
             defer { controller = nil }
+            // The scrim comes up the instant a target is confirmed (before the
+            // selection overlay tears down), so the desktop never flashes bright.
+            var scrim: CaptureScrim?
             do {
-                guard let result = try await capture.capture(mode: mode) else { return }
-                presentMarkup(result, onComplete: onComplete, onFailure: onFailure)
+                let result = try await capture.capture(
+                    mode: mode, onWillCapture: { rect in scrim = CaptureScrim(hole: rect) })
+                guard let result else { scrim?.fadeOut(); return }
+                presentMarkup(result, scrim: scrim ?? CaptureScrim(hole: result.screenRect),
+                              onComplete: onComplete, onFailure: onFailure, onLanded: onLanded)
             } catch {
+                scrim?.fadeOut()
                 onFailure(error.localizedDescription)
             }
         }
@@ -35,8 +43,10 @@ public enum CaptureFlow {
 
     private static func presentMarkup(
         _ result: CaptureResult,
+        scrim: CaptureScrim,
         onComplete: @escaping (URL) -> Void,
-        onFailure: @escaping (String) -> Void
+        onFailure: @escaping (String) -> Void,
+        onLanded: @escaping () -> Void
     ) {
         let editorID = UUID()
         var dismissIntro: (() -> Void)?
@@ -72,15 +82,18 @@ public enum CaptureFlow {
         // so the frame builds beneath the lifted capture.
         let captureCenter = CGPoint(x: result.screenRect.midX, y: result.screenRect.midY)
         editor.center(around: captureCenter)
-        guard let editorWindow = editor.window else { editor.present(); return }
+        guard let editorWindow = editor.window else {
+            editor.present(); scrim.fadeOut(); return
+        }
         dismissIntro = CaptureIntro.play(
-            image: result.image, screenRect: result.screenRect,
+            scrim: scrim, image: result.image, screenRect: result.screenRect,
             isFullScreen: result.isFullScreen,
             finalFrame: editor.canvasScreenFrame(),
-            editorWindow: editorWindow
-        ) {
-            editor.presentGrowing()
-        }
+            editorWindow: editorWindow,
+            present: { editor.presentGrowing() },
+            reveal: { editor.revealCanvas() },
+            onLanded: onLanded
+        )
     }
 }
 

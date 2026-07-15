@@ -102,7 +102,9 @@ enum ShareCatalog {
         cleanupKeys: [String] = []
     ) async throws {
         let manifestData = try JSONEncoder().encode(manifest)
-        let html = renderShareHTML(title: manifest.title, items: manifest.items)
+        let html = renderShareHTML(
+            title: manifest.title, items: manifest.items,
+            galleryEnabled: manifest.gallery == true)
         let pageData = Data(html.utf8)
         let transaction = Task.detached {
             try await client.put(
