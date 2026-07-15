@@ -167,6 +167,7 @@ final class StatusItemController: NSObject, NSWindowDelegate {
     private var activeDropTargets = ActiveDropTargets()
     private var pendingDragClose: DispatchWorkItem?
     private var pendingClientRebuild = false
+    private var dropPill: DropPillController?
     private let panelDropTargetID = "popover-window"
     private let iconDropTargetID = "status-icon"
 
@@ -225,6 +226,26 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         }
 
         rebuildClient()
+
+        // The floating drop pill: on by default, driven by the same shared
+        // state as the popover. Its callbacks never touch the store, so it is
+        // wired once here and never rebuilt.
+        let pillActions = DropPillActions(
+            dropped: { [weak self] urls in
+                self?.handleDrop(urls: urls, presentsList: false)
+            },
+            droppedSeparately: { [weak self] urls in
+                self?.handleSeparateDrop(urls: urls, presentsList: false)
+            },
+            copy: { text in copyToClipboard(text) },
+            open: { text in
+                if let url = URL(string: text) { NSWorkspace.shared.open(url) }
+            },
+            cancelUpload: { [weak self] in self?.uploads.cancel() },
+            capture: { [weak self] mode in self?.beginCapture(mode, presentsList: false) },
+            isListOpen: { [weak self] in self?.panel.isVisible ?? false })
+        dropPill = DropPillController(state: state, actions: pillActions)
+        dropPill?.show()
     }
 
     /// (Re)creates the client, store, and popover content from the stored
@@ -488,7 +509,7 @@ final class StatusItemController: NSObject, NSWindowDelegate {
     // MARK: - Upload
 
     @discardableResult
-    func handleDrop(urls: [URL]) -> Bool {
+    func handleDrop(urls: [URL], presentsList: Bool = true) -> Bool {
         guard !urls.isEmpty else { return false }
         guard client != nil else {
             notify(title: "Dropper", body: "Run the Setup Wizard before uploading files.")
@@ -499,11 +520,11 @@ final class StatusItemController: NSObject, NSWindowDelegate {
             return false
         }
         commitDrop()
-        uploads.upload(urls: urls, into: nil)
+        uploads.upload(urls: urls, into: nil, presentsList: presentsList)
         return true
     }
 
-    private func handleSeparateDrop(urls: [URL]) {
+    private func handleSeparateDrop(urls: [URL], presentsList: Bool = true) {
         guard !urls.isEmpty else { return }
         guard client != nil else {
             notify(title: "Dropper", body: "Run the Setup Wizard before uploading files.")
@@ -514,7 +535,7 @@ final class StatusItemController: NSObject, NSWindowDelegate {
             return
         }
         commitDrop()
-        uploads.uploadSeparately(urls: urls)
+        uploads.uploadSeparately(urls: urls, presentsList: presentsList)
     }
 
     /// Appends a row drop to that exact share. A stale/missing destination is
@@ -716,11 +737,13 @@ final class StatusItemController: NSObject, NSWindowDelegate {
     @objc private func captureWindowFromMenu() { beginCapture(.window) }
     @objc private func captureScreenFromMenu() { beginCapture(.display) }
 
-    private func beginCapture(_ mode: CaptureMode) {
+    private func beginCapture(_ mode: CaptureMode, presentsList: Bool = true) {
         closePopover()
         CaptureFlow.begin(
             mode: mode,
-            onComplete: { [weak self] url in self?.handleDrop(urls: [url]) },
+            onComplete: { [weak self] url in
+                self?.handleDrop(urls: [url], presentsList: presentsList)
+            },
             onFailure: { [weak self] message in
                 self?.notify(title: "Capture failed", body: message)
             })

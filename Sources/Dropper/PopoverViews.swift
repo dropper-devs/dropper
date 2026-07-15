@@ -370,8 +370,9 @@ func dropStripFileCount(stripCount: Int, popoverCount: Int) -> Int {
 
 /// Tracks how many files are hovering and which half of the strip the
 /// pointer is over; performs by side. Right half = one share per file,
-/// and only when more than one file is in the drag.
-private struct StripDropDelegate: DropDelegate {
+/// and only when more than one file is in the drag. Shared by the bottom
+/// strip and the floating drop pill.
+struct StripDropDelegate: DropDelegate {
     let midX: () -> CGFloat
     let update: (Int, Bool) -> Void
     let exit: () -> Void
