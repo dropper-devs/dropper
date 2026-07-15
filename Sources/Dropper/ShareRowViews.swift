@@ -57,14 +57,6 @@ func rowCheckbox(isOn: Bool, mixed: Bool = false,
     .buttonStyle(.borderless)
 }
 
-/// The reorder drop indicator drawn above/below a child row.
-func rowInsertionLine() -> some View {
-    Capsule()
-        .fill(Color.accentColor)
-        .frame(height: 2)
-        .padding(.horizontal, 36)
-}
-
 extension View {
     /// Shared row chrome: the selection/flash highlight fill, the external
     /// file-drop ring, and mid-delete dimming.
