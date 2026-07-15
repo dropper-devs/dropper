@@ -46,11 +46,15 @@ bundle: build icon
 	@echo "Built $(BUNDLE)"
 
 install: bundle
+	@# Quit any running instance so the fresh build takes over cleanly.
+	@killall "$(APP)" 2>/dev/null && sleep 0.6 || true
 	rm -rf "/Applications/$(APP).app"
 	cp -R "$(BUNDLE)" /Applications/
-	@echo "Installed /Applications/$(APP).app — it lives in the menu bar."
+	@echo "Installed /Applications/$(APP).app — relaunching…"
+	@open "/Applications/$(APP).app"
 
 run: bundle
+	@killall "$(APP)" 2>/dev/null && sleep 0.6 || true
 	open "$(BUNDLE)"
 
 # Distribution pipeline, modeled after ScreenCam:

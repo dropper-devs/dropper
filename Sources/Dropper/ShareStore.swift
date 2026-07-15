@@ -104,6 +104,19 @@ final class ShareStore: ObservableObject {
         let targetName = fileName(targetKey)
         guard !movingNames.contains(targetName), !movingNames.isEmpty else { return }
 
+        // Optimistic: reorder the visible children immediately so the drop
+        // lands with no lag; the publish below re-asserts authoritatively.
+        var optimistic = orderedChildren(item).map(\.fileName)
+        let optimisticMoving = optimistic.filter { movingNames.contains($0) }
+        if !optimisticMoving.isEmpty,
+           var insertAt = optimistic.filter({ !movingNames.contains($0) })
+            .firstIndex(of: targetName) {
+            optimistic.removeAll { movingNames.contains($0) }
+            if after { insertAt += 1 }
+            optimistic.insert(contentsOf: optimisticMoving, at: insertAt)
+            childOrder[item.id] = optimistic
+        }
+
         runMutation {
             let order = try await self.withShareMutation(id: item.id) { client, keys in
                 var manifest = try await ShareCatalog.currentManifest(
