@@ -96,15 +96,17 @@ enum ShareCatalog {
     /// no-cache, not max-age: the page is the one MUTABLE object in a share
     /// (collections change it), and an hour-stale page shows edits to nobody.
     /// Browsers/edge revalidate the ~15 KB of HTML per view; the heavy media
-    /// stays immutable-cached.
+    /// stays immutable-cached. Gallery layout comes from the current Share
+    /// Pages setting, never from collection metadata.
     static func publish(
         _ manifest: Manifest, keys: ShareKeys, client: any ShareDataClient,
+        galleryEnabled: Bool = ConfigStore.imageGallery(),
         cleanupKeys: [String] = []
     ) async throws {
         let manifestData = try JSONEncoder().encode(manifest)
         let html = renderShareHTML(
             title: manifest.title, items: manifest.items,
-            galleryEnabled: manifest.gallery == true)
+            galleryEnabled: galleryEnabled)
         let pageData = Data(html.utf8)
         let transaction = Task.detached {
             try await client.put(

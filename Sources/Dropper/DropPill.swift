@@ -118,15 +118,17 @@ final class DropPillController: NSObject {
         if Self.shouldShow { show() } else { hide() }
     }
 
-    /// Moves the notch to the same top-center position used on first launch.
+    /// Centers over the menu-bar area when the display has no camera housing;
+    /// a hardware notch uses the unobscured area immediately below it instead.
     func center(on screen: NSScreen) {
-        let visible = screen.visibleFrame
+        let placementFrame = screen.safeAreaInsets.top > 0
+            ? screen.visibleFrame : screen.frame
         let frame = NSRect(
             x: screen.frame.midX - Self.size.width / 2,
-            y: visible.maxY - Self.size.height,
+            y: placementFrame.maxY - Self.size.height,
             width: Self.size.width,
             height: Self.size.height)
-        panel.setFrame(Self.clamp(frame, to: visible), display: true)
+        panel.setFrame(Self.clamp(frame, to: placementFrame), display: true)
     }
 
     /// Restores the user's chosen spot, or defaults to just below the menu bar.
@@ -146,7 +148,8 @@ final class DropPillController: NSObject {
                 height: Self.size.height)
             screen = defaultScreen
         }
-        panel.setFrame(Self.clamp(frame, to: screen.visibleFrame), display: true)
+        panel.setFrame(Self.clamp(frame, to: Self.placementFrame(
+            for: frame, on: screen)), display: true)
     }
 
     /// Keeps the pill on-screen when the display arrangement changes — without
@@ -154,7 +157,8 @@ final class DropPillController: NSObject {
     @objc private func screensChanged() {
         guard let screen = Self.screen(containing: panel.frame)
                 ?? NSScreen.main ?? NSScreen.screens.first else { return }
-        panel.setFrame(Self.clamp(panel.frame, to: screen.visibleFrame), display: true)
+        panel.setFrame(Self.clamp(panel.frame, to: Self.placementFrame(
+            for: panel.frame, on: screen)), display: true)
     }
 
     @objc private func windowMoved() {
@@ -180,6 +184,16 @@ final class DropPillController: NSObject {
             return nil
         }
         return best.screen
+    }
+
+    /// Preserve an intentional menu-bar overlap on ordinary displays, while
+    /// keeping every other restored position inside the unobscured desktop.
+    private static func placementFrame(for frame: NSRect, on screen: NSScreen) -> NSRect {
+        if screen.safeAreaInsets.top == 0,
+           frame.maxY > screen.visibleFrame.maxY {
+            return screen.frame
+        }
+        return screen.visibleFrame
     }
 
     private static func clamp(_ frame: NSRect, to visible: NSRect) -> NSRect {

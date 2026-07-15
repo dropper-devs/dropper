@@ -73,8 +73,8 @@ func renderShareHTML(
 ) -> String {
     let nonce = securePageNonce()
     let escapedNonce = escapeHTML(nonce)
-    let usesGallery = galleryEnabled && items.count > 1
-        && items.allSatisfy { $0.kind == .image }
+    let galleryItems = items.filter { $0.kind == .image }
+    let usesGallery = galleryEnabled && galleryItems.count > 1
     // A nonce is the only way scripts may run. Attribute handlers are denied
     // explicitly, so a malformed manifest cannot turn a filename into
     // executable markup even if an escaping regression slips in later.
@@ -99,7 +99,13 @@ func renderShareHTML(
         "worker-src 'none'",
     ].joined(separator: "; ")
 
-    let blocks = usesGallery ? renderImageGallery(items) : items.map { item -> String in
+    var renderedGallery = false
+    let blocks = items.compactMap { item -> String? in
+        if usesGallery && item.kind == .image {
+            guard !renderedGallery else { return nil }
+            renderedGallery = true
+            return renderImageGallery(galleryItems)
+        }
         let fileURL = escapeHTML(encodedRelativeObjectPath(item.file))
         let media: String
         switch item.kind {
@@ -117,9 +123,9 @@ func renderShareHTML(
             var videoAttrs = " poster=\"\(posterURL)\""
             if let w = item.width, let h = item.height, w > 0, h > 0 {
                 let ratio = String(format: "%.4f", Double(w) / Double(h))
-                // Allow up to 2x natural width so small clips still present
-                // large; the page ceiling and viewport height cap both hold.
-                containerStyle = " style=\"max-width:min(1400px, \(w * 2)px, calc(80vh * \(ratio)))\""
+                // Embedded video sits at 75% of the old ceilings — all three
+                // caps scaled together so it shrinks uniformly whichever binds.
+                containerStyle = " style=\"max-width:min(1050px, \(w * 3 / 2)px, calc(60vh * \(ratio)))\""
                 videoAttrs += " width=\"\(w)\" height=\"\(h)\" style=\"aspect-ratio:\(w)/\(h)\""
             }
             media = """
@@ -187,7 +193,6 @@ func renderShareHTML(
         </figure>
         """
     }.joined(separator: "\n")
-    let contentClass = usesGallery ? "share-content gallery-content" : "share-content"
     let lightbox = usesGallery ? "\n\(imageGalleryLightbox)" : ""
 
     let needsMarkdown = items.contains { $0.kind == .markdown && $0.size < 2_000_000 }
@@ -215,7 +220,7 @@ func renderShareHTML(
     <button class="closer" aria-label="Close">
     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3l10 10M13 3 3 13"/></svg>
     </button>
-    <main class="\(contentClass)">
+    <main class="share-content">
     \(blocks)
     </main>\(lightbox)
     <footer class="dropper-credit">Shared beautifully with <a href="https://dropper.page" target="_blank" rel="noopener">Dropper</a></footer>

@@ -92,7 +92,7 @@ final class MarkupCanvasView: NSView, NSTextFieldDelegate, NSDraggingSource {
     }
 
     private var currentFontSize: CGFloat {
-        Self.defaultFontPoints * pixelScale
+        MarkupPrefs.fontPoints * pixelScale
     }
 
     func flattened() -> CGImage? {
@@ -244,7 +244,6 @@ final class MarkupCanvasView: NSView, NSTextFieldDelegate, NSDraggingSource {
     private static let minimumCropSizePoints: CGFloat = 12       // image points ÷ fitScale
 
     // Text tuning.
-    private static let defaultFontPoints: CGFloat = 24
     private static let textRotationHandleOffsetPoints: CGFloat = 24
     private static let textMinimumEdgePoints: CGFloat = 8
     private static let textMinimumScaleFloor: CGFloat = 0.05
@@ -639,6 +638,12 @@ final class MarkupCanvasView: NSView, NSTextFieldDelegate, NSDraggingSource {
             update(id) {
                 $0 = MarkupGeometry.moved($0, by: .zero, within: self.imageSize)
             }
+        }
+        if case .resizing(let id, _, let original) = drag,
+           original.tool == .text,
+           let shape = shapes.first(where: { $0.id == id }),
+           shape.fontSize != original.fontSize {
+            MarkupPrefs.fontPoints = shape.fontSize / pixelScale
         }
         drag = nil
     }

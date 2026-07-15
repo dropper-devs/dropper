@@ -12,7 +12,7 @@ let sharePageStyles = """
         display: flex; flex-direction: column; align-items: center; justify-content: center;
         gap: 28px; background: #14151a; color: #d7d9e0;
         font: 14px/1.4 -apple-system, system-ui, sans-serif;
-        padding: 96px clamp(24px, 8vw, 128px) 32px; box-sizing: border-box;
+        padding: 48px clamp(24px, 8vw, 128px) 32px; box-sizing: border-box;
       }
       .share-content {
         display: flex; flex-direction: column; align-items: center;
@@ -24,10 +24,10 @@ let sharePageStyles = """
       audio { width: min(640px, 100%); }
       figcaption { opacity: 0.7; word-break: break-all; text-align: center; font-size: 13px; }
       figcaption a { color: inherit; }
-      .gallery-content { max-width: 1280px; }
       .image-gallery {
         display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 150px));
-        justify-content: center; gap: clamp(8px, 1.2vw, 16px); width: 100%;
+        justify-content: center; gap: clamp(8px, 1.2vw, 16px);
+        width: 100%; max-width: 1280px;
       }
       .gallery-item {
         display: block; position: relative; aspect-ratio: 1; overflow: hidden;

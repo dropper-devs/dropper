@@ -80,6 +80,7 @@ public final class MarkupWindowController: NSWindowController, NSWindowDelegate 
         .pointer, .crop, .shape(.arrow), .shape(.line),
         .shape(.ellipse), .shape(.rect), .shape(.pen), .shape(.text),
     ]
+    private static let outputScales: [CGFloat] = [1, 0.75, 0.5]
 
     /// Where the pointer sits in `tools` — the crop exit and initial selection
     /// return to it. Derived, so it can't drift from the array above.
@@ -112,14 +113,23 @@ public final class MarkupWindowController: NSWindowController, NSWindowDelegate 
         super.init(window: window)
         window.delegate = self
 
+        colorTarget = MarkupPrefs.editsFill ? .fill : .stroke
+        strokeColorIndex = MarkupPrefs.strokeColorIndex
+        chosenFillColorIndex = MarkupPrefs.fillColorIndex
+
         buildContent(in: window)
         installCenteredTitle(in: window)
         updateWindowTitle(CGSize(width: image.width, height: image.height))
         canvas.onApplyCrop = { [weak self] in self?.applyCropClicked() }
         canvas.onCancelCrop = { [weak self] in self?.selectTool(at: Self.pointerToolIndex) }
         canvas.onImageSizeChanged = { [weak self] size in self?.updateWindowTitle(size) }
-        selectTool(at: Self.pointerToolIndex)
-        selectColor(at: 0)
+        canvas.setColorIndex(strokeColorIndex)
+        canvas.setFillColorIndex(chosenFillColorIndex)
+        canvas.setOutputScale(Self.outputScales[MarkupPrefs.outputScaleIndex])
+        refreshColorButtons()
+        let savedTool = MarkupPrefs.toolIndex
+        selectTool(at: Self.tools.indices.contains(savedTool)
+                   ? savedTool : Self.pointerToolIndex)
         window.center()
     }
 
@@ -394,7 +404,7 @@ public final class MarkupWindowController: NSWindowController, NSWindowDelegate 
                                         trackingMode: .selectOne,
                                         target: self,
                                         action: #selector(colorTargetChanged(_:)))
-        target.selectedSegment = 0
+        target.selectedSegment = colorTarget == .stroke ? 0 : 1
         target.toolTip = "Choose whether the palette edits the stroke or fill"
         target.widthAnchor.constraint(equalToConstant: 104).isActive = true
         target.heightAnchor.constraint(equalToConstant: 42).isActive = true
@@ -442,7 +452,7 @@ public final class MarkupWindowController: NSWindowController, NSWindowDelegate 
 
         let size = NSPopUpButton(frame: .zero, pullsDown: false)
         size.addItems(withTitles: ["Size: 100%", "Size: 75%", "Size: 50%"])
-        size.selectItem(at: 0)
+        size.selectItem(at: MarkupPrefs.outputScaleIndex)
         size.target = self
         size.action = #selector(sizeChanged(_:))
         size.toolTip = "Output image size"
@@ -480,6 +490,8 @@ public final class MarkupWindowController: NSWindowController, NSWindowDelegate 
     }
 
     private func selectTool(at index: Int) {
+        guard Self.tools.indices.contains(index) else { return }
+        MarkupPrefs.toolIndex = index
         for button in toolButtons {
             button.state = button.tag == index ? .on : .off
         }
@@ -512,6 +524,7 @@ public final class MarkupWindowController: NSWindowController, NSWindowDelegate 
 
     @objc private func colorTargetChanged(_ sender: NSSegmentedControl) {
         colorTarget = sender.selectedSegment == 0 ? .stroke : .fill
+        MarkupPrefs.editsFill = colorTarget == .fill
         refreshColorButtons()
         window?.makeFirstResponder(canvas)
     }
@@ -519,11 +532,14 @@ public final class MarkupWindowController: NSWindowController, NSWindowDelegate 
     private func selectColor(at index: Int) {
         switch colorTarget {
         case .stroke:
-            guard index >= 0 else { return }
+            guard MarkupPalette.colors.indices.contains(index) else { return }
             strokeColorIndex = index
+            MarkupPrefs.strokeColorIndex = index
             canvas.setColorIndex(index)
         case .fill:
+            guard index == -1 || MarkupPalette.colors.indices.contains(index) else { return }
             chosenFillColorIndex = index >= 0 ? index : nil
+            MarkupPrefs.fillColorIndex = chosenFillColorIndex
             canvas.setFillColorIndex(chosenFillColorIndex)
         }
         refreshColorButtons()
@@ -562,8 +578,9 @@ public final class MarkupWindowController: NSWindowController, NSWindowDelegate 
     }
 
     @objc private func sizeChanged(_ sender: NSPopUpButton) {
-        let scales: [CGFloat] = [1, 0.75, 0.5]
-        canvas.setOutputScale(scales[min(max(sender.indexOfSelectedItem, 0), scales.count - 1)])
+        let index = min(max(sender.indexOfSelectedItem, 0), Self.outputScales.count - 1)
+        MarkupPrefs.outputScaleIndex = index
+        canvas.setOutputScale(Self.outputScales[index])
         window?.makeFirstResponder(canvas)
     }
 

@@ -108,6 +108,46 @@ final class ShareStoreReliabilityTests: XCTestCase {
             peaks: nil, width: nil, height: nil, poster: poster)
     }
 
+    func testPublishUsesSharePageSettingForGalleryLayoutWithMixedMedia() async throws {
+        let keys = ShareKeys(id: "gallery-setting", config: config)
+        let client = FakeShareDataClient(config: config)
+        let manifest = Manifest(items: [
+            item("one.jpg", kind: .image),
+            item("clip.mp4", kind: .video),
+            item("two.jpg", kind: .image),
+            item("song.mp3", kind: .audio),
+            item("bundle.zip"),
+        ])
+
+        try await ShareCatalog.publish(
+            manifest, keys: keys, client: client, galleryEnabled: true)
+        let storedGalleryData = await client.data(for: keys.page)
+        let galleryData = try XCTUnwrap(storedGalleryData)
+        let galleryHTML = try XCTUnwrap(String(data: galleryData, encoding: .utf8))
+        XCTAssertTrue(galleryHTML.contains(#"<section class="image-gallery""#))
+        XCTAssertEqual(
+            galleryHTML.components(separatedBy: #"<a class="gallery-item" "#).count - 1,
+            2)
+        XCTAssertFalse(galleryHTML.contains(#"<figure id="one.jpg">"#))
+        XCTAssertFalse(galleryHTML.contains(#"<figure id="two.jpg">"#))
+        XCTAssertTrue(galleryHTML.contains(#"<figure id="clip.mp4">"#))
+        XCTAssertTrue(galleryHTML.contains(#"src="clip.mp4""#))
+        XCTAssertTrue(galleryHTML.contains(#"<figure id="song.mp3">"#))
+        XCTAssertTrue(galleryHTML.contains(#"<audio controls src="song.mp3"></audio>"#))
+        XCTAssertTrue(galleryHTML.contains(#"<figure id="bundle.zip">"#))
+        XCTAssertTrue(galleryHTML.contains(
+            #"<a class="dl" href="bundle.zip" download>Download</a>"#))
+
+        try await ShareCatalog.publish(
+            manifest, keys: keys, client: client, galleryEnabled: false)
+        let storedStandardData = await client.data(for: keys.page)
+        let standardData = try XCTUnwrap(storedStandardData)
+        let standardHTML = try XCTUnwrap(String(data: standardData, encoding: .utf8))
+        XCTAssertFalse(standardHTML.contains(#"<section class="image-gallery""#))
+        XCTAssertTrue(standardHTML.contains(#"<figure id="one.jpg">"#))
+        XCTAssertTrue(standardHTML.contains(#"<figure id="two.jpg">"#))
+    }
+
     func testCurrentManifestReadsWhateverDecodes() async throws {
         // If the bytes decode, that IS the manifest — no version gate, no
         // semantic rejection. Reading never fails a manifest that parsed.

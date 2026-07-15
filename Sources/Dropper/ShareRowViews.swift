@@ -93,20 +93,25 @@ struct DeleteConfirmButton: View {
                         withAnimation { model.confirming = nil }
                         perform()
                     } label: {
-                        Image(systemName: "checkmark").foregroundStyle(.green)
+                        Image(systemName: "checkmark")
+                            .foregroundStyle(.green)
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.plain)
                     .help("Delete")
 
                     Button {
                         withAnimation { model.confirming = nil }
                     } label: {
-                        Image(systemName: "xmark").foregroundStyle(.secondary)
+                        Image(systemName: "xmark")
+                            .foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.plain)
                     .help("Cancel")
                 }
                 .padding(4)
+                // Keep its full width so the confirm pair can't be squeezed or
+                // clipped out of the row.
+                .fixedSize()
                 .contentShape(Rectangle())
                 .transition(.scale.combined(with: .opacity))
             } else {

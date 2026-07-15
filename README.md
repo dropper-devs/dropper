@@ -66,7 +66,6 @@ preserves the original filename for display.
 ```json
 {
   "version": 2,
-  "gallery": false,
   "items": [
     {
       "file": "launch-demo.mp4",
@@ -91,9 +90,9 @@ New manifests currently write `version: 2`. The app does not use that value as
 a compatibility gate, does not force an existing manifest to a newer version,
 and preserves the stored value when updating a collection. It still validates
 the manifest's filenames, unique membership, sizes, and poster paths before
-using it. `gallery` records the share-page layout selected when the collection
-is created; later collection updates preserve it. Older manifests without it
-keep the standard stacked layout.
+using it. Gallery layout is not stored in the manifest: whenever the page is
+regenerated, the current Share Pages setting decides whether a collection of
+multiple images renders as a gallery or as the standard stacked layout.
 
 Only a folder with a readable `manifest.json` is treated as a share. Other
 folders remain ordinary folders in the browser.

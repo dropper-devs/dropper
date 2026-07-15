@@ -410,7 +410,46 @@ public enum MarkupGeometry {
 
 /// Persisted markup preferences (shared app defaults).
 public enum MarkupPrefs {
+    private static let toolKey = "DropperMarkupToolIndex"
+    private static let editsFillKey = "DropperMarkupEditsFill"
+    private static let strokeColorKey = "DropperMarkupStrokeColorIndex"
+    private static let fillColorKey = "DropperMarkupFillColorIndex"
     private static let strokeKey = "DropperMarkupStrokePoints"
+    private static let fontKey = "DropperMarkupFontPoints"
+    private static let outputScaleKey = "DropperMarkupOutputScaleIndex"
+
+    public static var toolIndex: Int {
+        get { UserDefaults.standard.integer(forKey: toolKey) }
+        set { UserDefaults.standard.set(newValue, forKey: toolKey) }
+    }
+
+    public static var editsFill: Bool {
+        get { UserDefaults.standard.bool(forKey: editsFillKey) }
+        set { UserDefaults.standard.set(newValue, forKey: editsFillKey) }
+    }
+
+    public static var strokeColorIndex: Int {
+        get {
+            let value = UserDefaults.standard.integer(forKey: strokeColorKey)
+            return MarkupPalette.colors.indices.contains(value) ? value : 0
+        }
+        set {
+            guard MarkupPalette.colors.indices.contains(newValue) else { return }
+            UserDefaults.standard.set(newValue, forKey: strokeColorKey)
+        }
+    }
+
+    /// A missing key and -1 both mean that closed shapes have no fill.
+    public static var fillColorIndex: Int? {
+        get {
+            guard UserDefaults.standard.object(forKey: fillColorKey) != nil else { return nil }
+            let value = UserDefaults.standard.integer(forKey: fillColorKey)
+            return MarkupPalette.colors.indices.contains(value) ? value : nil
+        }
+        set {
+            UserDefaults.standard.set(newValue ?? -1, forKey: fillColorKey)
+        }
+    }
 
     /// Stroke width in screen points, clamped to 1...12; written on every
     /// slider tick so the choice sticks across sessions.
@@ -422,6 +461,31 @@ public enum MarkupPrefs {
         set {
             UserDefaults.standard.set(Double(min(max(newValue, 1), 12)),
                                       forKey: strokeKey)
+        }
+    }
+
+    /// Default text size in screen points. Shapes convert this to image pixels
+    /// using the capture scale, so it remains visually stable across displays.
+    public static var fontPoints: CGFloat {
+        get {
+            let value = UserDefaults.standard.double(forKey: fontKey)
+            return value.isFinite && value > 0 ? CGFloat(value) : 24
+        }
+        set {
+            let value = Double(newValue)
+            guard value.isFinite, value > 0 else { return }
+            UserDefaults.standard.set(value, forKey: fontKey)
+        }
+    }
+
+    public static var outputScaleIndex: Int {
+        get {
+            let value = UserDefaults.standard.integer(forKey: outputScaleKey)
+            return (0...2).contains(value) ? value : 0
+        }
+        set {
+            guard (0...2).contains(newValue) else { return }
+            UserDefaults.standard.set(newValue, forKey: outputScaleKey)
         }
     }
 }

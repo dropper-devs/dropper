@@ -26,9 +26,6 @@ struct Manifest: Codable, Equatable {
 
     var version = Manifest.currentVersion
     var items: [ManifestItem]
-    /// The saved share-page layout. Collection updates preserve it. Optional
-    /// so manifests created before galleries existed continue to decode.
-    var gallery: Bool? = nil
 
     /// The share's display title, derived from its first item.
     var title: String {

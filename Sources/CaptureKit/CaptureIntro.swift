@@ -41,6 +41,7 @@ public final class CaptureScrim {
         window.ignoresMouseEvents = true
         window.hasShadow = false
         window.animationBehavior = .none   // no system appearance animation
+        window.sharingType = .readOnly     // visible to ScreenCaptureKit / recordings
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
 
         root = NSView(frame: CGRect(origin: .zero, size: frame.size))
@@ -356,6 +357,9 @@ public enum CaptureIntro {
         // No system "pop into place" appearance animation — the ghost must appear
         // dead-still, pinned over the subject; only our keyframes move it.
         window.animationBehavior = .none
+        // Stay visible to ScreenCaptureKit so the animation shows up in screen
+        // recordings (otherwise the recorder skips these overlay windows).
+        window.sharingType = .readOnly
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         return window
     }
