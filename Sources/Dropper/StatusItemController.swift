@@ -242,7 +242,10 @@ final class StatusItemController: NSObject, NSWindowDelegate {
                 if let url = URL(string: text) { NSWorkspace.shared.open(url) }
             },
             cancelUpload: { [weak self] in self?.uploads.cancel() },
-            capture: { [weak self] mode in self?.beginCapture(mode, presentsList: false) },
+            capture: { [weak self] mode in
+                guard let self, self.dropPill?.wasJustDragged != true else { return }
+                self.beginCapture(mode, presentsList: false)
+            },
             isListOpen: { [weak self] in self?.panel.isVisible ?? false })
         dropPill = DropPillController(state: state, actions: pillActions)
         dropPill?.show()

@@ -1,21 +1,14 @@
 /* ---------------------------------- nav ---------------------------------- */
 
-/* Frosted-glass nav: deep blur + saturation boost so page color bleeds
-   through richly, a vertical white gradient for the pane itself, a 1px
-   inner top highlight (the "lit edge" every real glass surface has), and
-   a soft drop shadow to lift it off the page. */
+/* A flat, translucent strip: enough diffusion to keep the links readable,
+   with an even tint and a single crisp edge like clear tape. */
 .nav {
   position: fixed;
   inset: 0 0 auto;
   z-index: 50;
-  backdrop-filter: blur(80px) saturate(1.8) brightness(1.1);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.13),
-    rgba(255, 255, 255, 0.055)
-  );
-  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 0 8px 22px rgba(2, 6, 20, 0.18);
+  backdrop-filter: blur(20px) saturate(1.15);
+  background: rgba(255, 255, 255, 0.065);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .nav-inner {
