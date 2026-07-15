@@ -350,6 +350,7 @@ final class ShareStore: ObservableObject {
             }
             self.deleteProgress = nil
             self.deletingIDs = []
+            if done > 0 { Sounds.delete?.play() }
             self.refresh()
         }
     }

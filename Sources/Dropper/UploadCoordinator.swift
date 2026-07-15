@@ -417,7 +417,7 @@ final class UploadCoordinator {
     private func finish(results: [ShareResult]) {
         let pages = results.map(\.pageURL)
         copyToClipboard(pages.joined(separator: "\n"))
-        NSSound(named: "Glass")?.play()
+        Sounds.drop?.play()
         busy = false
         uploadTask = nil
         let name = results.count == 1
