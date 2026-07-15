@@ -23,7 +23,7 @@ export default function Hero() {
           </p>
           <div className="hero-ctas">
             <DownloadButton />
-            <SmoothLink className="btn btn-ghost" to="how">
+            <SmoothLink className="btn btn-ghost" to="feature-demo">
               See how it works
             </SmoothLink>
           </div>

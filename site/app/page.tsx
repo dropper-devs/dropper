@@ -1,6 +1,7 @@
 import ParallaxField from "@/components/ParallaxField";
 import Nav from "@/components/sections/Nav";
 import Hero from "@/components/sections/Hero";
+import FeatureDemo from "@/components/sections/FeatureDemo";
 import HowItWorks from "@/components/sections/HowItWorks";
 import SharePages from "@/components/sections/SharePages";
 import Screenshots from "@/components/sections/Screenshots";
@@ -57,6 +58,7 @@ export default function Home() {
       <ParallaxField />
       <main>
         <Hero />
+        <FeatureDemo />
         <HowItWorks />
         <SharePages />
         <Screenshots />
