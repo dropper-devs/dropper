@@ -133,6 +133,47 @@ public final class MarkupWindowController: NSWindowController, NSWindowDelegate 
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    /// Centers the editor *around a point* (the middle of the captured region),
+    /// clamped fully within that point's screen — so the frame assembles right
+    /// where the shot was taken, on its own monitor.
+    public func center(around point: CGPoint) {
+        guard let window else { return }
+        let screen = NSScreen.screens.first { $0.frame.contains(point) } ?? NSScreen.main
+        let visible = screen?.visibleFrame ?? window.frame
+        let frame = window.frame
+        var origin = NSPoint(x: point.x - frame.width / 2, y: point.y - frame.height / 2)
+        origin.x = min(max(origin.x, visible.minX), visible.maxX - frame.width)
+        origin.y = min(max(origin.y, visible.minY), visible.maxY - frame.height)
+        window.setFrameOrigin(origin)
+    }
+
+    /// The canvas (the screenshot) in global AppKit points — where the capture
+    /// intro should land its ghost so the hand-off is seamless.
+    public func canvasScreenFrame() -> CGRect {
+        guard let window else { return .zero }
+        window.layoutIfNeeded()
+        return window.convertToScreen(canvas.convert(canvas.bounds, to: nil))
+    }
+
+    /// Presents the editor growing in from a slightly smaller frame while it
+    /// fades up — the "window forms around the screenshot" beat of the intro.
+    public func presentGrowing() {
+        guard let window else { return present() }
+        let full = window.frame
+        let start = full.insetBy(dx: full.width * 0.05, dy: full.height * 0.05)
+        window.setFrame(start, display: false)
+        window.alphaValue = 0
+        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(canvas)
+        NSApp.activate(ignoringOtherApps: true)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.3
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            window.animator().setFrame(full, display: true)
+            window.animator().alphaValue = 1
+        }
+    }
+
     // MARK: - Layout
 
     private static func windowSize(for image: CGImage, scale: CGFloat) -> NSSize {

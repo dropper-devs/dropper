@@ -125,6 +125,12 @@ struct DropPillView: View {
     @State private var hovering = false      // pointer resting over the pill
     @State private var hoveredSegment: Int?  // which capture segment the pointer is over
     @State private var revertWork: DispatchWorkItem?
+    @State private var confirmation: String?     // transient "Link copied" toast
+    @State private var confirmWork: DispatchWorkItem?
+    @State private var autoExpand = false        // offer the link actions without a hover
+    @State private var celebrating = false       // running the post-upload sequence
+    @State private var seqExpand: DispatchWorkItem?
+    @State private var seqCollapse: DispatchWorkItem?
 
     private var dragging: Bool { dragCount > 0 }
     private static let revertDelay: TimeInterval = 3
@@ -136,9 +142,11 @@ struct DropPillView: View {
     /// One id per distinct visual state; changing it drives the blur-morph
     /// between states. Progress ticks keep the same id and update in place.
     private var visualKey: Int {
+        if confirmation != nil { return 7 }
         switch state.strip {
         case .uploading: return 1
-        case .links: return dragging ? (dragCount > 1 ? 3 : 2) : (hovering ? 5 : 4)
+        case .links: return dragging ? (dragCount > 1 ? 3 : 2)
+                                     : ((hovering || autoExpand) ? 5 : 4)
         case .idle: return dragging ? (dragCount > 1 ? 3 : 2) : (hovering ? 6 : 0)
         }
     }
@@ -177,8 +185,19 @@ struct DropPillView: View {
             perform: { separate, providers in
                 performDrop(separate: separate, providers: providers)
             }))
-        .onChange(of: state.strip) { _, _ in
+        .onChange(of: state.strip) { _, newValue in
             dragCount = 0
+            // A finished pill upload (links, list closed) runs the celebration:
+            // check → auto-offer the actions → idle. Selections stay quiet.
+            if case let .links(_, pageURLs, _) = newValue, !actions.isListOpen() {
+                startUploadCelebration(
+                    message: pageURLs.count > 1 ? "Links copied" : "Link copied")
+            } else {
+                cancelCelebration()
+                confirmWork?.cancel()
+                confirmation = nil
+                autoExpand = false
+            }
             scheduleRevert()
         }
         .onChange(of: hovering) { _, isHovering in
@@ -196,7 +215,8 @@ struct DropPillView: View {
     private func scheduleRevert() {
         revertWork?.cancel()
         revertWork = nil
-        guard case .links = state.strip, !hovering, !actions.isListOpen() else { return }
+        guard case .links = state.strip, !hovering, !actions.isListOpen(),
+              confirmation == nil, !celebrating else { return }
         let work = DispatchWorkItem {
             if case .links = state.strip, !actions.isListOpen() {
                 withAnimation(Self.morph) { state.strip = .idle }
@@ -232,8 +252,11 @@ struct DropPillView: View {
         case 2: return CGSize(width: 300, height: 82)   // drop target
         case 3: return CGSize(width: 344, height: 90)   // collection / items split
         case 1: return CGSize(width: 300, height: 64)   // uploading
-        case 4: return CGSize(width: 188, height: 46)   // done, at rest
-        case 5: return CGSize(width: 340, height: 74)   // done, hovered
+        case 4: return CGSize(width: 58, height: 32)    // links, at rest — small
+        case 5: return CGSize(width: currentLinkSegmentCount >= 3 ? 300 : 224,
+                              height: 70)               // links, hovered
+        case 7: return CGSize(width: 210, height: 44)   // copy confirmation
+
         default: return CGSize(width: 58, height: 32)   // idle — small, just the droplet
         }
     }
@@ -275,15 +298,84 @@ struct DropPillView: View {
     }
 
     @ViewBuilder private var content: some View {
-        switch state.strip {
-        case let .uploading(name, progress):
-            uploadingContent(name: name, progress: progress)
-        case let .links(name, pageURLs, fileURLs):
-            if dragging { dropContent }
-            else { doneContent(name: name, pageURLs: pageURLs, fileURLs: fileURLs) }
-        case .idle:
-            if dragging { dropContent } else { idleContent }
+        if let confirmation {
+            confirmationContent(confirmation)
+        } else {
+            switch state.strip {
+            case let .uploading(name, progress):
+                uploadingContent(name: name, progress: progress)
+            case let .links(_, pageURLs, fileURLs):
+                if dragging { dropContent }
+                else { doneContent(pageURLs: pageURLs, fileURLs: fileURLs) }
+            case .idle:
+                if dragging { dropContent } else { idleContent }
+            }
         }
+    }
+
+    private func confirmationContent(_ message: String) -> some View {
+        HStack(spacing: 9) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 15))
+                .foregroundStyle(.green)
+            Text(message)
+                .font(.system(size: 13.5, weight: .semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Flashes a green-check toast (e.g. "Link copied") for a beat, then — for a
+    /// pill upload — settles back to idle. A copy ends any auto-offer.
+    private func confirm(_ message: String) {
+        cancelCelebration()
+        confirmWork?.cancel()
+        withAnimation(Self.morph) { confirmation = message }
+        let work = DispatchWorkItem {
+            withAnimation(Self.morph) { confirmation = nil }
+            if case .links = state.strip, !actions.isListOpen(), !hovering {
+                withAnimation(Self.morph) { state.strip = .idle }
+            }
+        }
+        confirmWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6, execute: work)
+    }
+
+    /// The post-upload sequence: a check-mark success, then the link actions
+    /// auto-expand for a couple seconds (no hover needed), then back to idle if
+    /// the user never reaches for them.
+    private func startUploadCelebration(message: String) {
+        cancelCelebration()
+        confirmWork?.cancel()
+        celebrating = true
+        withAnimation(Self.morph) { confirmation = message; autoExpand = false }
+
+        let expand = DispatchWorkItem {
+            withAnimation(Self.morph) { confirmation = nil; autoExpand = true }
+        }
+        let collapse = DispatchWorkItem {
+            celebrating = false
+            seqExpand = nil
+            seqCollapse = nil
+            withAnimation(Self.morph) { autoExpand = false }
+            if case .links = state.strip, !actions.isListOpen(), !hovering {
+                withAnimation(Self.morph) { state.strip = .idle }
+            }
+        }
+        seqExpand = expand
+        seqCollapse = collapse
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.3, execute: expand)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.8, execute: collapse)
+    }
+
+    private func cancelCelebration() {
+        seqExpand?.cancel()
+        seqExpand = nil
+        seqCollapse?.cancel()
+        seqCollapse = nil
+        celebrating = false
     }
 
     // MARK: - States
@@ -292,34 +384,18 @@ struct DropPillView: View {
     /// capture launcher — the same window/area/screen flow as the menu.
     @ViewBuilder private var idleContent: some View {
         if hovering {
-            // A segmented capture launcher: the outer segments' outer corners
-            // round to ~half the segment height, so they hug the pill's capsule
-            // ends; the middle one stays lightly rounded. A single position
-            // tracker drives the highlight so it can never get stuck.
-            let outer: CGFloat = 30, inner: CGFloat = 6
-            HStack(spacing: 4) {
-                CaptureSegment(label: "Window", icon: "macwindow",
-                               corners: .init(topLeading: outer, bottomLeading: outer,
-                                              bottomTrailing: inner, topTrailing: inner),
-                               highlighted: hoveredSegment == 0) { actions.capture(.window) }
-                CaptureSegment(label: "Area", icon: "rectangle.dashed",
-                               corners: .init(topLeading: inner, bottomLeading: inner,
-                                              bottomTrailing: inner, topTrailing: inner),
-                               highlighted: hoveredSegment == 1) { actions.capture(.area) }
-                CaptureSegment(label: "Screen", icon: "display",
-                               corners: .init(topLeading: inner, bottomLeading: inner,
-                                              bottomTrailing: outer, topTrailing: outer),
-                               highlighted: hoveredSegment == 2) { actions.capture(.display) }
-            }
-            .padding(6)
-            .background(SegmentHoverTracker(count: 3) { hoveredSegment = $0 })
+            // Hovering the idle pill reveals the capture launcher.
+            segmentedRow([
+                PillSegment(label: "Window", icon: "macwindow") { actions.capture(.window) },
+                PillSegment(label: "Area", icon: "rectangle.dashed") { actions.capture(.area) },
+                PillSegment(label: "Screen", icon: "display") { actions.capture(.display) },
+            ])
         } else {
-            // At rest: a very small black pill with just the droplet at its left.
+            // At rest: a very small black pill with just the droplet, centered.
             Image(systemName: "drop.fill")
                 .font(.system(size: 13))
                 .foregroundStyle(Color.accentColor)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                .padding(.leading, 15)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
@@ -396,72 +472,76 @@ struct DropPillView: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// The link is already on the clipboard by the time this shows. At rest
-    /// it just confirms that; hovering reveals the open/copy actions.
+    /// Links are available (a finished upload, or a selection in the list). At
+    /// rest it's just a small link glyph — never "copied", since selecting
+    /// copies nothing. Hovering reveals Open / Copy / File as segmented buttons,
+    /// styled exactly like the capture launcher, with no filename.
     @ViewBuilder
-    private func doneContent(name: String, pageURLs: [String],
-                             fileURLs: [String]) -> some View {
-        if hovering {
-            VStack(alignment: .leading, spacing: 9) {
-                Text(name)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.55))
-                    .lineLimit(1).truncationMode(.middle)
-                HStack(spacing: 8) {
-                    if !pageURLs.isEmpty {
-                        Button {
-                            for url in pageURLs { actions.open(url) }
-                        } label: {
-                            buttonLabel(pageURLs.count > 1 ? "Open pages" : "Open page",
-                                        icon: "safari")
-                        }
-                        .buttonStyle(PillButtonStyle(accent: true))
-                        linkButton(pageURLs.count > 1 ? "Copy links" : "Copy link",
-                                   icon: "doc.on.doc",
-                                   url: pageURLs.joined(separator: "\n"))
-                    }
-                    if !fileURLs.isEmpty {
-                        linkButton(fileURLs.count > 1 ? "File links" : "File link",
-                                   icon: "arrow.down.circle",
-                                   url: fileURLs.joined(separator: "\n"))
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
+    private func doneContent(pageURLs: [String], fileURLs: [String]) -> some View {
+        if hovering || autoExpand {
+            segmentedRow(linkSegments(pageURLs: pageURLs, fileURLs: fileURLs))
         } else {
-            HStack(spacing: 9) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 15))
-                    .foregroundStyle(.green)
-                Text("Link copied")
-                    .font(.system(size: 13.5, weight: .semibold))
-                    .foregroundStyle(.white)
+            Image(systemName: "link")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color.accentColor)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    // MARK: - Segmented rows
+
+    /// A row of segmented pill buttons, shared by the capture launcher and the
+    /// link actions. The outer segments hug the capsule ends; a single position
+    /// tracker drives the highlight so it can never stick.
+    private func segmentedRow(_ segments: [PillSegment]) -> some View {
+        let count = segments.count
+        return HStack(spacing: 4) {
+            ForEach(Array(segments.enumerated()), id: \.offset) { index, segment in
+                CaptureSegment(label: segment.label, icon: segment.icon,
+                               corners: segmentCorners(index: index, count: count),
+                               highlighted: hoveredSegment == index,
+                               action: segment.action)
             }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 12)
         }
+        .padding(6)
+        .background(SegmentHoverTracker(count: count) { hoveredSegment = $0 })
     }
 
-    // MARK: - Pieces
-
-    private func linkButton(_ label: String, icon: String, url: String) -> some View {
-        Button {
-            actions.copy(url)
-        } label: {
-            buttonLabel(label, icon: icon)
-        }
-        .buttonStyle(PillButtonStyle())
+    private func segmentCorners(index: Int, count: Int) -> RectangleCornerRadii {
+        let outer: CGFloat = 30, inner: CGFloat = 6
+        let first = index == 0, last = index == count - 1
+        return .init(topLeading: first ? outer : inner,
+                     bottomLeading: first ? outer : inner,
+                     bottomTrailing: last ? outer : inner,
+                     topTrailing: last ? outer : inner)
     }
 
-    private func buttonLabel(_ label: String, icon: String) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon).font(.system(size: 11, weight: .semibold))
-            Text(label)
+    private func linkSegments(pageURLs: [String], fileURLs: [String]) -> [PillSegment] {
+        var segments: [PillSegment] = []
+        if !pageURLs.isEmpty {
+            segments.append(PillSegment(label: "Open", icon: "safari") {
+                for url in pageURLs { actions.open(url) }
+            })
+            segments.append(PillSegment(label: "Copy", icon: "doc.on.doc") {
+                actions.copy(pageURLs.joined(separator: "\n"))
+                confirm(pageURLs.count > 1 ? "Links copied" : "Link copied")
+            })
         }
-        .padding(.horizontal, 15)
-        .padding(.vertical, 8)
+        if !fileURLs.isEmpty {
+            segments.append(PillSegment(label: "File", icon: "arrow.down.circle") {
+                actions.copy(fileURLs.joined(separator: "\n"))
+                confirm(fileURLs.count > 1 ? "File links copied" : "File link copied")
+            })
+        }
+        return segments
+    }
+
+    /// The number of link segments for the current state — sizes the pill.
+    private var currentLinkSegmentCount: Int {
+        if case let .links(_, pageURLs, fileURLs) = state.strip {
+            return (pageURLs.isEmpty ? 0 : 2) + (fileURLs.isEmpty ? 0 : 1)
+        }
+        return 2
     }
 
     private func splitZone(_ label: String, icon: String, active: Bool) -> some View {
@@ -558,41 +638,11 @@ private struct SegmentHoverTracker: NSViewRepresentable {
     }
 }
 
-/// The pill's own button chrome — a rounded fill that brightens on hover
-/// (tracked via `.activeAlways`, so it works on the background panel) and
-/// presses in on click. `accent` fills with the brand color for primary actions.
-private struct PillButtonStyle: ButtonStyle {
-    var accent = false
-
-    func makeBody(configuration: Configuration) -> some View {
-        PillButtonBody(configuration: configuration, accent: accent)
-    }
-
-    private struct PillButtonBody: View {
-        let configuration: Configuration
-        let accent: Bool
-        @State private var hover = false
-
-        var body: some View {
-            let shape = Capsule()
-            return configuration.label
-                .font(.system(size: 12.5, weight: .semibold))
-                .foregroundStyle(accent ? .white : .white.opacity(0.92))
-                .background(shape.fill(fill))
-                .overlay(accent ? nil : shape.strokeBorder(
-                    Color.white.opacity(0.09), lineWidth: 1))
-                .clipShape(shape)
-                .background(HoverTracking { hover = $0 })
-                .scaleEffect(configuration.isPressed ? 0.97 : 1)
-                .animation(.easeOut(duration: 0.12), value: hover)
-                .animation(.easeOut(duration: 0.10), value: configuration.isPressed)
-        }
-
-        private var fill: Color {
-            if accent { return Color.accentColor.opacity(hover ? 1 : 0.9) }
-            return Color.white.opacity(hover ? 0.15 : 0.07)
-        }
-    }
+/// One entry in a `segmentedRow` — a labeled, icon'd button.
+private struct PillSegment {
+    let label: String
+    let icon: String
+    let action: () -> Void
 }
 
 /// Reports pointer enter/exit via an `.activeAlways` tracking area, which —

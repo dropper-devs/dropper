@@ -39,9 +39,12 @@ public enum CaptureFlow {
         onFailure: @escaping (String) -> Void
     ) {
         let editorID = UUID()
+        var dismissIntro: (() -> Void)?
         let editor = MarkupWindowController(
             image: result.image, scale: result.scale, captureTitle: result.title
         ) { exit in
+            dismissIntro?()
+            dismissIntro = nil
             editors.removeValue(forKey: editorID)
             switch exit {
             case .cancelled:
@@ -65,7 +68,19 @@ public enum CaptureFlow {
             }
         }
         editors[editorID] = editor
-        editor.present()
+        // Assemble the editor right where the shot was taken (its own monitor),
+        // so the frame builds beneath the lifted capture.
+        let captureCenter = CGPoint(x: result.screenRect.midX, y: result.screenRect.midY)
+        editor.center(around: captureCenter)
+        guard let editorWindow = editor.window else { editor.present(); return }
+        dismissIntro = CaptureIntro.play(
+            image: result.image, screenRect: result.screenRect,
+            isFullScreen: result.isFullScreen,
+            finalFrame: editor.canvasScreenFrame(),
+            editorWindow: editorWindow
+        ) {
+            editor.presentGrowing()
+        }
     }
 }
 

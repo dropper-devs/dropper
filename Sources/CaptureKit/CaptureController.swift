@@ -33,6 +33,13 @@ public struct CaptureResult {
     public let scale: CGFloat
     /// Human-readable source name shown by the markup editor.
     public let title: String
+    /// The captured region in global AppKit points (bottom-left origin) — the
+    /// capture-intro animation lays the "ghost" here so it sits exactly over
+    /// what was shot.
+    public let screenRect: CGRect
+    /// A whole-display capture: the intro shrinks it in place instead of
+    /// popping it up (it already fills the screen and can't grow).
+    public let isFullScreen: Bool
 }
 
 /// Runs one capture: presents the selector UI for the mode (screencam-style
@@ -77,7 +84,9 @@ public final class CaptureController: NSObject {
         configuration.height = max(1, Int((CGFloat(display.height) * scale).rounded(.up)))
 
         let image = try await Self.captureImage(filter: filter, configuration: configuration)
-        return CaptureResult(image: image, scale: scale, title: target.captureTitle)
+        // A full display: the on-screen region is simply the screen's frame.
+        return CaptureResult(image: image, scale: scale, title: target.captureTitle,
+                             screenRect: target.frame, isFullScreen: true)
     }
 
     // MARK: - Area
@@ -106,7 +115,15 @@ public final class CaptureController: NSObject {
         configuration.height = Int(pixels.height)
 
         let image = try await Self.captureImage(filter: filter, configuration: configuration)
-        return CaptureResult(image: image, scale: scale, title: "Area")
+        // `rect` is display-local, top-left origin (ScreenCaptureKit's source
+        // rect). Convert to global AppKit points (bottom-left) via the target
+        // display's frame, flipping Y within the display.
+        let f = selection.target.frame
+        let screenRect = CGRect(x: f.minX + rect.minX,
+                                y: f.minY + (f.height - rect.maxY),
+                                width: rect.width, height: rect.height)
+        return CaptureResult(image: image, scale: scale, title: "Area",
+                             screenRect: screenRect, isFullScreen: false)
     }
 
     // MARK: - Window
@@ -146,7 +163,15 @@ public final class CaptureController: NSObject {
 
         let title = await Self.capturedWindowTitle(filter: filter, contentRect: rect)
         let image = try await Self.captureImage(filter: filter, configuration: configuration)
-        return CaptureResult(image: image, scale: scale, title: title)
+        // `rect` is global CoreGraphics points (top-left, primary-display
+        // origin). Flip Y by the primary display's height to reach AppKit's
+        // bottom-left global space.
+        let primaryHeight = (NSScreen.screens.first { $0.frame.origin == .zero }?
+            .frame.height) ?? NSScreen.main?.frame.height ?? rect.maxY
+        let screenRect = CGRect(x: rect.minX, y: primaryHeight - rect.maxY,
+                                width: rect.width, height: rect.height)
+        return CaptureResult(image: image, scale: scale, title: title,
+                             screenRect: screenRect, isFullScreen: false)
     }
 
     private static func capturedWindowTitle(
