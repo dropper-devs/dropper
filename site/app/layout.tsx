@@ -15,7 +15,6 @@ export const metadata: Metadata = {
     "file sharing",
     "macOS menu bar",
     "Cloudflare R2",
-    "screenshot tool",
     "share links",
     "self-hosted",
   ],

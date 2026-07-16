@@ -1,5 +1,4 @@
 import AppKit
-import CaptureKit
 import SwiftUI
 
 /// Callbacks the SwiftUI popover content uses to reach the controller.
@@ -167,7 +166,6 @@ final class StatusItemController: NSObject, NSWindowDelegate {
     private var activeDropTargets = ActiveDropTargets()
     private var pendingDragClose: DispatchWorkItem?
     private var pendingClientRebuild = false
-    private var dropPill: DropPillController?
     private let panelDropTargetID = "popover-window"
     private let iconDropTargetID = "status-icon"
 
@@ -226,29 +224,6 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         }
 
         rebuildClient()
-
-        // The floating drop pill: on by default, driven by the same shared
-        // state as the popover. Its callbacks never touch the store, so it is
-        // wired once here and never rebuilt.
-        let pillActions = DropPillActions(
-            dropped: { [weak self] urls in
-                self?.handleDrop(urls: urls, presentsList: false)
-            },
-            droppedSeparately: { [weak self] urls in
-                self?.handleSeparateDrop(urls: urls, presentsList: false)
-            },
-            copy: { text in copyToClipboard(text) },
-            open: { text in
-                if let url = URL(string: text) { NSWorkspace.shared.open(url) }
-            },
-            cancelUpload: { [weak self] in self?.uploads.cancel() },
-            capture: { [weak self] mode in
-                guard let self, self.dropPill?.wasJustDragged != true else { return }
-                self.beginCapture(mode, presentsList: false)
-            },
-            isListOpen: { [weak self] in self?.panel.isVisible ?? false })
-        dropPill = DropPillController(state: state, actions: pillActions)
-        if DropPillController.shouldShow { dropPill?.show() }
     }
 
     /// (Re)creates the client, store, and popover content from the stored
@@ -512,7 +487,7 @@ final class StatusItemController: NSObject, NSWindowDelegate {
     // MARK: - Upload
 
     @discardableResult
-    func handleDrop(urls: [URL], presentsList: Bool = true) -> Bool {
+    func handleDrop(urls: [URL]) -> Bool {
         guard !urls.isEmpty else { return false }
         guard client != nil else {
             notify(title: "Dropper", body: "Run the Setup Wizard before uploading files.")
@@ -523,11 +498,11 @@ final class StatusItemController: NSObject, NSWindowDelegate {
             return false
         }
         commitDrop()
-        uploads.upload(urls: urls, into: nil, presentsList: presentsList)
+        uploads.upload(urls: urls, into: nil)
         return true
     }
 
-    private func handleSeparateDrop(urls: [URL], presentsList: Bool = true) {
+    private func handleSeparateDrop(urls: [URL]) {
         guard !urls.isEmpty else { return }
         guard client != nil else {
             notify(title: "Dropper", body: "Run the Setup Wizard before uploading files.")
@@ -538,7 +513,7 @@ final class StatusItemController: NSObject, NSWindowDelegate {
             return
         }
         commitDrop()
-        uploads.uploadSeparately(urls: urls, presentsList: presentsList)
+        uploads.uploadSeparately(urls: urls)
     }
 
     /// Appends a row drop to that exact share. A stale/missing destination is
@@ -673,7 +648,6 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         let view = SettingsView(
             viewCounts: viewCounts,
             onSave: { [weak self] in
-                self?.dropPill?.applyVisibilityPreference()
                 self?.rebuildClient()
             },
             onViewCountsChanged: { [weak self] in
@@ -702,38 +676,10 @@ final class StatusItemController: NSObject, NSWindowDelegate {
 
     // MARK: - Context menu
 
-    private lazy var notchMenuItem: NSMenuItem = {
-        let item = NSMenuItem(title: "Show Notch",
-                              action: #selector(toggleNotchFromMenu), keyEquivalent: "")
-        item.target = self
-        return item
-    }()
-
-    private lazy var centerNotchMenuItem: NSMenuItem = {
-        let item = NSMenuItem(title: "Center Notch",
-                              action: #selector(centerNotchFromMenu), keyEquivalent: "")
-        item.target = self
-        return item
-    }()
-
-    private var contextMenuScreen: NSScreen?
-
+    /// Dropper keeps its original utility menu; only the capture and notch
+    /// commands were removed for the R2-only split.
     private lazy var contextMenu: NSMenu = {
         let menu = NSMenu()
-        let captures: [(String, Selector)] = [
-            ("Capture Window", #selector(captureWindowFromMenu)),
-            ("Capture Area", #selector(captureAreaFromMenu)),
-            ("Capture Screen", #selector(captureScreenFromMenu)),
-        ]
-        for (title, action) in captures {
-            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
-            item.target = self
-            menu.addItem(item)
-        }
-        menu.addItem(.separator())
-        menu.addItem(notchMenuItem)
-        menu.addItem(centerNotchMenuItem)
-        menu.addItem(.separator())
         let settings = NSMenuItem(title: "Settings…",
                                   action: #selector(settingsFromMenu), keyEquivalent: ",")
         settings.target = self
@@ -758,50 +704,8 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         openSettings()
     }
 
-    @objc private func toggleNotchFromMenu() {
-        guard let dropPill else { return }
-        dropPill.setVisible(!dropPill.isVisible)
-    }
-
-    @objc private func centerNotchFromMenu() {
-        guard let screen = contextMenuScreen
-                ?? statusItem.button?.window?.screen
-                ?? NSScreen.main ?? NSScreen.screens.first else { return }
-        dropPill?.center(on: screen)
-    }
-
-    @objc private func captureAreaFromMenu() { beginCapture(.area) }
-    @objc private func captureWindowFromMenu() { beginCapture(.window) }
-    @objc private func captureScreenFromMenu() { beginCapture(.display) }
-
-    private func beginCapture(_ mode: CaptureMode, presentsList: Bool = true) {
-        closePopover()
-        CaptureFlow.begin(
-            mode: mode,
-            onComplete: { [weak self] url in
-                self?.handleDrop(urls: [url], presentsList: presentsList)
-            },
-            onFailure: { [weak self] message in
-                self?.notify(title: "Capture failed", body: message)
-            },
-            onLanded: { Sounds.drop?.play() })
-    }
-
     private func showContextMenu() {
         guard let button = statusItem.button else { return }
-        if let buttonWindow = button.window {
-            let anchor = buttonWindow.convertToScreen(
-                button.convert(button.bounds, to: nil))
-            let anchorPoint = NSPoint(x: anchor.midX, y: anchor.midY)
-            contextMenuScreen = NSScreen.screens.first {
-                NSMouseInRect(anchorPoint, $0.frame, false)
-            } ?? buttonWindow.screen
-        } else {
-            contextMenuScreen = nil
-        }
-        let notchIsVisible = dropPill?.isVisible == true
-        notchMenuItem.state = notchIsVisible ? .on : .off
-        centerNotchMenuItem.isHidden = !notchIsVisible
         contextMenu.popUp(positioning: nil,
                           at: NSPoint(x: 0, y: button.bounds.height + 6), in: button)
     }
@@ -863,7 +767,6 @@ final class StatusDropView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        // Ctrl-click is a right click by macOS convention.
         if event.modifierFlags.contains(.control) {
             onRightClick()
         } else {

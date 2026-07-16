@@ -13,12 +13,12 @@ struct PopoverRootView: View {
                 if let store {
                     ShareListView(store: store, state: state, actions: actions)
                 } else {
-                    // No stored token — the wizard (right-click the icon) is
-                    // the way in.
+                    // No stored token — the Setup Wizard in the icon's
+                    // right-click menu is the way in.
                     Text("Not connected — run the Setup Wizard to link your Cloudflare account.")
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
-                        .padding()
+                    .padding()
                 }
             }
             // The persistent hosting controller/window owns the exact size.
@@ -377,8 +377,7 @@ func dropStripFileCount(stripCount: Int, popoverCount: Int) -> Int {
 
 /// Tracks how many files are hovering and which half of the strip the
 /// pointer is over; performs by side. Right half = one share per file,
-/// and only when more than one file is in the drag. Shared by the bottom
-/// strip and the floating drop pill.
+/// and only when more than one file is in the drag.
 struct StripDropDelegate: DropDelegate {
     let midX: () -> CGFloat
     let update: (Int, Bool) -> Void

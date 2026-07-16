@@ -946,13 +946,6 @@ footer a:hover {
   gap: 8px;
 }
 
-/* the real markup-editor screenshot: a notch smaller than full width */
-#screenshots .product-shot > img {
-  max-width: 920px;
-  display: block;
-  margin-inline: auto;
-}
-
 /* auroras must not widen the page on small screens */
 @media (max-width: 720px) {
   .feature-grid::before,

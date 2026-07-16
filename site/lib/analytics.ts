@@ -1,5 +1,5 @@
 /**
- * Client-side Mixpanel wrapper, patterned after ScreenCam's analytics.ts.
+ * Client-side Mixpanel wrapper for the Dropper marketing site.
  *
  * The token is fetched at runtime from /api/analytics/config (it lives as a
  * Cloudflare Worker secret, never in the bundle). Everything no-ops until

@@ -14,7 +14,7 @@ export default function Nav() {
         </SmoothLink>
         <div className="nav-links">
           <SmoothLink to="share-pages">Share pages</SmoothLink>
-          <SmoothLink to="screenshots">Screenshots</SmoothLink>
+          <SmoothLink to="how">How it works</SmoothLink>
           <SmoothLink to="collections">Collections</SmoothLink>
           <SmoothLink to="setup">Easy setup</SmoothLink>
         </div>

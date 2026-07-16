@@ -57,7 +57,7 @@ run: bundle
 	@killall "$(APP)" 2>/dev/null && sleep 0.6 || true
 	open "$(BUNDLE)"
 
-# Distribution pipeline, modeled after ScreenCam:
+# Distribution pipeline:
 # dist-build -> sign -> notarize -> dmg -> upload -> tag.
 release-check:
 	@./scripts/tag-release.sh --check

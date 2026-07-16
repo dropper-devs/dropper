@@ -31,9 +31,6 @@ enum UploadPipelineError: LocalizedError {
 final class UploadCoordinator {
     private(set) var busy = false
     private var uploadTask: Task<Void, Never>?
-    // The pill drives its own progress and copies the link itself, so its
-    // uploads never open the list — they announce with a notification instead.
-    private var presentsList = true
     private let state: UIState
 
     // Bound by StatusItemController at startup and on settings changes.
@@ -47,14 +44,14 @@ final class UploadCoordinator {
         self.state = state
     }
 
-    func upload(urls: [URL], into existing: ShareItem?, presentsList: Bool = true) {
-        run(batches: [urls], into: existing, presentsList: presentsList)
+    func upload(urls: [URL], into existing: ShareItem?) {
+        run(batches: [urls], into: existing)
     }
 
     /// "Upload new items": every dropped file becomes its own share, run
     /// back-to-back through the same pipeline.
-    func uploadSeparately(urls: [URL], presentsList: Bool = true) {
-        run(batches: urls.map { [$0] }, into: nil, presentsList: presentsList)
+    func uploadSeparately(urls: [URL]) {
+        run(batches: urls.map { [$0] }, into: nil)
     }
 
     struct ShareResult {
@@ -64,17 +61,15 @@ final class UploadCoordinator {
         let fileURL: String?
     }
 
-    private func run(batches: [[URL]], into existing: ShareItem?,
-                     presentsList: Bool = true) {
+    private func run(batches: [[URL]], into existing: ShareItem?) {
         guard !busy, client != nil, let store, !batches.isEmpty else { return }
 
         busy = true
-        self.presentsList = presentsList
         // Existing-share drops keep their collection selected while the
         // bottom strip switches to upload progress. New shares have no row yet.
         state.highlightedID = existing?.id
         state.strip = .uploading(name: "Preparing…", progress: 0)
-        if presentsList { presentPopover() }
+        presentPopover()
         setIcon(0.001)
 
         uploadTask = Task {
@@ -428,13 +423,7 @@ final class UploadCoordinator {
         setIcon(nil)
         store?.showingArchive = false  // new uploads land in the main list
         store?.refresh()
-        if presentsList {
-            presentPopover()
-        } else {
-            // The pill never opens the list, so the notification is how the
-            // user learns the link is already on their clipboard.
-            notify("Link copied", name)
-        }
+        presentPopover()
     }
 
     private func fail(_ error: Error) {

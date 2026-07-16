@@ -18,8 +18,7 @@ Website & download: [dropper.page](https://dropper.page)
 | Path | What it is |
 | --- | --- |
 | `Sources/Dropper` | The menu bar app (SwiftPM executable): UI, uploads, share pages, media conversion, onboarding |
-| `Sources/CaptureKit` | Screenshot capture and markup, as a separate library target |
-| `Tests/` | Unit tests for both targets |
+| `Tests/DropperTests` | Unit tests for Dropper's upload, configuration, and share-page behavior |
 | `site/` | Marketing site on Cloudflare Workers — see [`site/README.md`](site/README.md) |
 | `workers/` | Small native Worker serving `/share/*` directly from R2, outside Next/OpenNext |
 | `Makefile`, `build.conf`, `scripts/` | Local build and the release pipeline (build → sign → notarize → dmg → upload → tag) |

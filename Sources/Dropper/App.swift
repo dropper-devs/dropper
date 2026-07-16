@@ -9,16 +9,7 @@ enum DropperMain {
         app.delegate = delegate
         app.setActivationPolicy(.accessory)  // menu bar only, no Dock icon
         installMainMenu(app)
-        registerBundledFonts()
         app.run()
-    }
-
-    /// Makes the bundled annotation font (Caveat, OFL) available to
-    /// CoreText before any markup window resolves it.
-    private static func registerBundledFonts() {
-        guard let url = Bundle.module.url(forResource: "Caveat",
-                                          withExtension: "ttf") else { return }
-        CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
     }
 
     /// Accessory apps get no menu bar UI, but the main menu still routes key

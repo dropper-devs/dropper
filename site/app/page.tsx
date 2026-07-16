@@ -4,7 +4,6 @@ import Hero from "@/components/sections/Hero";
 import FeatureDemo from "@/components/sections/FeatureDemo";
 import HowItWorks from "@/components/sections/HowItWorks";
 import SharePages from "@/components/sections/SharePages";
-import Screenshots from "@/components/sections/Screenshots";
 import Collections from "@/components/sections/Collections";
 import Conversion from "@/components/sections/Conversion";
 import Organize from "@/components/sections/Organize";
@@ -61,7 +60,6 @@ export default function Home() {
         <FeatureDemo />
         <HowItWorks />
         <SharePages />
-        <Screenshots />
         <Collections />
         <Conversion />
         <Organize />

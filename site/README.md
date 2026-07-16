@@ -117,7 +117,7 @@ an immutable cache.
 | Production origin (canonical/OG URLs) | `SITE_URL` in `lib/site.ts`                                                                                                                                                 |
 | Demo media                            | Share URLs in `components/demo/data.ts` + names/sizes in `lib/demo-manifest.json`                                                                                           |
 | Hero wallpaper                        | Replace `public/wallpaper.jpg`, run `npm run wallpaper`                                                                                                                     |
-| Real screenshots                      | Pass `src="/shots/…"` to a `<ProductShot>` in `components/sections/SharePages.tsx`, `Screenshots.tsx`, or `Collections.tsx` — the HTML/CSS mockup is the automatic fallback |
+| Real product images                   | Pass `src="/shots/…"` to a `<ProductShot>` in `components/sections/SharePages.tsx` or `Collections.tsx` — the HTML/CSS mockup is the automatic fallback |
 
 ## Hero wallpaper
 
@@ -131,9 +131,8 @@ re-run `npm run wallpaper`.
 
 ## Product visuals
 
-There are no fake screenshots. The markup-editor shot is a real capture
-(`public/screenshot-editor.png`); the rest of the app UI is recreated as
-HTML/CSS components (crisp at any DPI, zero image weight):
+The app UI is recreated as HTML/CSS components (crisp at any DPI, zero image
+weight):
 
 - `components/HeroDemo.tsx` — the interactive menu bar dropdown
   (toolbar, path bar, row list, drop strip, footer — layout mirrors
@@ -143,6 +142,5 @@ HTML/CSS components (crisp at any DPI, zero image weight):
 - `components/mockups/SplitDropMockup.tsx` — the "Add to collection /
   Upload new item" split drop zone
 
-The static ones are wrapped in `components/ProductShot.tsx`, which swaps to
-a real `<img>` the moment you pass it a `src` — the Screenshots section
-already does.
+The static ones are wrapped in `components/ProductShot.tsx`, which swaps to a
+real `<img>` the moment you pass it a `src`.
