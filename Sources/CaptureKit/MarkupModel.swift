@@ -417,6 +417,10 @@ public enum MarkupPrefs {
     private static let strokeKey = "DropperMarkupStrokePoints"
     private static let fontKey = "DropperMarkupFontPoints"
     private static let outputScaleKey = "DropperMarkupOutputScaleIndex"
+    private static let toolbarDockKey = "DropperMarkupToolbarDock"
+    private static let toolbarDockOffsetKey = "DropperMarkupToolbarDockOffset"
+    private static let toolbarCenterXKey = "DropperMarkupToolbarCenterX"
+    private static let toolbarCenterYKey = "DropperMarkupToolbarCenterY"
 
     public static var toolIndex: Int {
         get { UserDefaults.standard.integer(forKey: toolKey) }
@@ -486,6 +490,59 @@ public enum MarkupPrefs {
         set {
             guard (0...2).contains(newValue) else { return }
             UserDefaults.standard.set(newValue, forKey: outputScaleKey)
+        }
+    }
+
+    public static var toolbarDockIndex: Int {
+        get {
+            let value = UserDefaults.standard.integer(forKey: toolbarDockKey)
+            return (0...3).contains(value) ? value : 0
+        }
+        set {
+            guard (0...3).contains(newValue) else { return }
+            UserDefaults.standard.set(newValue, forKey: toolbarDockKey)
+        }
+    }
+
+    public static var toolbarDockOffset: CGFloat {
+        get {
+            guard UserDefaults.standard.object(forKey: toolbarDockOffsetKey) != nil else {
+                return 0.5
+            }
+            let value = UserDefaults.standard.double(forKey: toolbarDockOffsetKey)
+            guard value.isFinite else { return 0.5 }
+            return CGFloat(min(max(value, 0), 1))
+        }
+        set {
+            let value = Double(newValue)
+            guard value.isFinite else { return }
+            UserDefaults.standard.set(min(max(value, 0), 1),
+                                      forKey: toolbarDockOffsetKey)
+        }
+    }
+
+    /// The toolbar center relative to the editor's size. Values intentionally
+    /// remain unclamped so a freely placed toolbar can sit outside the window.
+    public static var toolbarRelativeCenter: CGPoint? {
+        get {
+            let defaults = UserDefaults.standard
+            guard defaults.object(forKey: toolbarCenterXKey) != nil,
+                  defaults.object(forKey: toolbarCenterYKey) != nil else { return nil }
+            let x = defaults.double(forKey: toolbarCenterXKey)
+            let y = defaults.double(forKey: toolbarCenterYKey)
+            guard x.isFinite, y.isFinite else { return nil }
+            return CGPoint(x: x, y: y)
+        }
+        set {
+            let defaults = UserDefaults.standard
+            guard let newValue,
+                  newValue.x.isFinite, newValue.y.isFinite else {
+                defaults.removeObject(forKey: toolbarCenterXKey)
+                defaults.removeObject(forKey: toolbarCenterYKey)
+                return
+            }
+            defaults.set(Double(newValue.x), forKey: toolbarCenterXKey)
+            defaults.set(Double(newValue.y), forKey: toolbarCenterYKey)
         }
     }
 }

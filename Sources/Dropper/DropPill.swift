@@ -21,11 +21,21 @@ struct DropPillActions {
 private final class DropPillPanel: NSPanel {
     private static let dragThreshold: CGFloat = 5
     private var dragMouseDown: NSEvent?
+    var onContextMenu: ((NSEvent) -> Void)?
 
     override func sendEvent(_ event: NSEvent) {
         switch event.type {
         case .leftMouseDown:
+            if event.modifierFlags.contains(.control) {
+                dragMouseDown = nil
+                onContextMenu?(event)
+                return
+            }
             dragMouseDown = event
+        case .rightMouseDown:
+            dragMouseDown = nil
+            onContextMenu?(event)
+            return
         case .leftMouseDragged:
             if let mouseDown = dragMouseDown {
                 let dx = event.locationInWindow.x - mouseDown.locationInWindow.x
@@ -58,6 +68,17 @@ final class DropPillController: NSObject {
     private let panel: DropPillPanel
     private var lastMoveTime: TimeInterval = 0
 
+    private lazy var contextMenu: NSMenu = {
+        let menu = NSMenu()
+        let center = NSMenuItem(
+            title: "Center Notch",
+            action: #selector(centerFromContextMenu),
+            keyEquivalent: "")
+        center.target = self
+        menu.addItem(center)
+        return menu
+    }()
+
     /// True right after the pill was dragged, so a click that lands at the end
     /// of a drag-to-move doesn't get treated as a capture-button press.
     var wasJustDragged: Bool {
@@ -85,6 +106,9 @@ final class DropPillController: NSObject {
         panel.becomesKeyOnlyIfNeeded = true
         panel.isMovableByWindowBackground = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.onContextMenu = { [weak self] event in
+            self?.showContextMenu(for: event)
+        }
         // A hosting *controller* (not a raw NSHostingView) is what reliably
         // drives SwiftUI animations for a window's content — same as the
         // popover. sizingOptions [] leaves the fixed panel to own its size.
@@ -129,6 +153,17 @@ final class DropPillController: NSObject {
             width: Self.size.width,
             height: Self.size.height)
         panel.setFrame(Self.clamp(frame, to: placementFrame), display: true)
+    }
+
+    private func showContextMenu(for event: NSEvent) {
+        guard let contentView = panel.contentView else { return }
+        NSMenu.popUpContextMenu(contextMenu, with: event, for: contentView)
+    }
+
+    @objc private func centerFromContextMenu() {
+        guard let screen = Self.screen(containing: panel.frame)
+                ?? panel.screen ?? NSScreen.main ?? NSScreen.screens.first else { return }
+        center(on: screen)
     }
 
     /// Restores the user's chosen spot, or defaults to just below the menu bar.
@@ -260,12 +295,10 @@ struct DropPillView: View {
                 .onAppear { pillWidth = geo.size.width }
                 .onChange(of: geo.size.width) { _, width in pillWidth = width }
         })
-        // A background panel never becomes key, so an AppKit .activeAlways
-        // tracking area is the reliable way to know the pointer is resting here.
-        // Every state change is driven from an AppKit callback (hover tracker,
-        // drop delegate) — so each must open its own animation transaction with
-        // withAnimation; an implicit .animation modifier alone won't fire here.
-        .background(HoverTracking { inside in
+        // Keep hover tracking on the fixed panel rather than the morphing pill.
+        // The small activation zone grows into a retention zone after opening,
+        // so resizing the pill cannot generate an enter/exit feedback loop.
+        .background(HoverTracking(expanded: pillSize.width > 58) { inside in
             withAnimation(Self.morph) { hovering = inside }
         })
         .onDrop(of: [.fileURL], delegate: StripDropDelegate(
@@ -722,9 +755,82 @@ private struct SegmentHoverTracker: NSViewRepresentable {
     final class Tracker: NSView {
         var count: Int
         var onChange: (Int?) -> Void
+        private var pointerTrackingArea: NSTrackingArea?
+        private var reportedSegment: Int?
 
         init(count: Int, onChange: @escaping (Int?) -> Void) {
             self.count = count
+            self.onChange = onChange
+            super.init(frame: .zero)
+        }
+
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            guard pointerTrackingArea == nil else { return }
+            let area = NSTrackingArea(
+                rect: bounds,
+                options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
+                owner: self)
+            addTrackingArea(area)
+            pointerTrackingArea = area
+        }
+
+        override func mouseMoved(with event: NSEvent) { report(event) }
+        override func mouseEntered(with event: NSEvent) { report(event) }
+        override func mouseExited(with event: NSEvent) { setSegment(nil) }
+
+        private func report(_ event: NSEvent) {
+            let point = convert(event.locationInWindow, from: nil)
+            guard bounds.width > 0, bounds.contains(point) else {
+                setSegment(nil)
+                return
+            }
+            let column = Int(point.x / (bounds.width / CGFloat(count)))
+            setSegment(min(max(column, 0), count - 1))
+        }
+
+        private func setSegment(_ segment: Int?) {
+            guard segment != reportedSegment else { return }
+            reportedSegment = segment
+            onChange(segment)
+        }
+    }
+}
+
+/// One entry in a `segmentedRow` — a labeled, icon'd button.
+private struct PillSegment {
+    let label: String
+    let icon: String
+    let action: () -> Void
+}
+
+/// Reports pointer enter/exit via an `.activeAlways` tracking area, which —
+/// unlike SwiftUI's `.onHover` — fires even for a background, non-key panel.
+private struct HoverTracking: NSViewRepresentable {
+    let expanded: Bool
+    let onChange: (Bool) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        TrackingView(expanded: expanded, onChange: onChange)
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        guard let trackingView = nsView as? TrackingView else { return }
+        trackingView.expanded = expanded
+        trackingView.onChange = onChange
+    }
+
+    private final class TrackingView: NSView {
+        var expanded: Bool
+        var onChange: (Bool) -> Void
+        private var reportedInside = false
+
+        override var isFlipped: Bool { true }
+
+        init(expanded: Bool, onChange: @escaping (Bool) -> Void) {
+            self.expanded = expanded
             self.onChange = onChange
             super.init(frame: .zero)
         }
@@ -740,57 +846,27 @@ private struct SegmentHoverTracker: NSViewRepresentable {
                 owner: self))
         }
 
-        override func mouseMoved(with event: NSEvent) { report(event) }
         override func mouseEntered(with event: NSEvent) { report(event) }
-        override func mouseExited(with event: NSEvent) { onChange(nil) }
+        override func mouseMoved(with event: NSEvent) { report(event) }
+        override func mouseExited(with event: NSEvent) { setInside(false) }
 
         private func report(_ event: NSEvent) {
             let point = convert(event.locationInWindow, from: nil)
-            guard bounds.width > 0, bounds.contains(point) else { onChange(nil); return }
-            let column = Int(point.x / (bounds.width / CGFloat(count)))
-            onChange(min(max(column, 0), count - 1))
-        }
-    }
-}
-
-/// One entry in a `segmentedRow` — a labeled, icon'd button.
-private struct PillSegment {
-    let label: String
-    let icon: String
-    let action: () -> Void
-}
-
-/// Reports pointer enter/exit via an `.activeAlways` tracking area, which —
-/// unlike SwiftUI's `.onHover` — fires even for a background, non-key panel.
-private struct HoverTracking: NSViewRepresentable {
-    let onChange: (Bool) -> Void
-
-    func makeNSView(context: Context) -> NSView { TrackingView(onChange: onChange) }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        (nsView as? TrackingView)?.onChange = onChange
-    }
-
-    private final class TrackingView: NSView {
-        var onChange: (Bool) -> Void
-
-        init(onChange: @escaping (Bool) -> Void) {
-            self.onChange = onChange
-            super.init(frame: .zero)
+            let size = expanded || reportedInside
+                ? NSSize(width: 332, height: 94)
+                : NSSize(width: 70, height: 44)
+            let activeRect = NSRect(
+                x: bounds.midX - size.width / 2,
+                y: 10,
+                width: size.width,
+                height: size.height)
+            setInside(activeRect.contains(point))
         }
 
-        required init?(coder: NSCoder) { fatalError() }
-
-        override func updateTrackingAreas() {
-            super.updateTrackingAreas()
-            trackingAreas.forEach(removeTrackingArea)
-            addTrackingArea(NSTrackingArea(
-                rect: bounds,
-                options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
-                owner: self))
+        private func setInside(_ inside: Bool) {
+            guard inside != reportedInside else { return }
+            reportedInside = inside
+            onChange(inside)
         }
-
-        override func mouseEntered(with event: NSEvent) { onChange(true) }
-        override func mouseExited(with event: NSEvent) { onChange(false) }
     }
 }

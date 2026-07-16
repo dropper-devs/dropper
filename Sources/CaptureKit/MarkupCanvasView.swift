@@ -39,6 +39,7 @@ final class MarkupCanvasView: NSView, NSTextFieldDelegate, NSDraggingSource {
         case rotating(UUID, original: MarkupShape, pointerOffset: CGFloat,
                       handleUsesBottom: Bool)
         // Crop reuses the area-selection handle so the two share resize math.
+        case creatingCrop(start: CGPoint, previous: CGRect)
         case resizingCrop(AreaResizeHandle, original: CGRect)
         case movingCrop(original: CGRect, start: CGPoint)
         case exportingImage(start: CGPoint)
@@ -437,8 +438,24 @@ final class MarkupCanvasView: NSView, NSTextFieldDelegate, NSDraggingSource {
     }
 
     override func resetCursorRects() {
-        if cropRect != nil {
+        if let cropRect {
             addCursorRect(bounds, cursor: .crosshair)
+            let fullImage = CGRect(origin: .zero, size: imageSize)
+            if cropRect != fullImage {
+                let origin = viewPoint(from: CGPoint(x: cropRect.minX, y: cropRect.minY))
+                let corner = viewPoint(from: CGPoint(x: cropRect.maxX, y: cropRect.maxY))
+                let cropBox = CGRect(x: origin.x, y: origin.y,
+                                     width: corner.x - origin.x,
+                                     height: corner.y - origin.y)
+                addCursorRect(cropBox, cursor: .openHand)
+                for handle in AreaResizeHandle.allCases {
+                    let center = viewPoint(from: handle.position(in: cropRect))
+                    addCursorRect(
+                        Self.handleRect(center: center,
+                                        size: Self.cropHandleSize + 2),
+                        cursor: .crosshair)
+                }
+            }
             return
         }
         switch currentTool {
@@ -465,8 +482,13 @@ final class MarkupCanvasView: NSView, NSTextFieldDelegate, NSDraggingSource {
         if let cropRect {
             if let handle = cropHandle(at: point, in: cropRect, tolerance: tolerance) {
                 drag = .resizingCrop(handle, original: cropRect)
-            } else if cropRect.contains(point) {
+            } else if cropRect != CGRect(origin: .zero, size: imageSize),
+                      cropRect.contains(point) {
                 drag = .movingCrop(original: cropRect, start: point)
+            } else if fitRect.contains(viewPoint) {
+                drag = .creatingCrop(
+                    start: MarkupGeometry.clamped(point, to: imageSize),
+                    previous: cropRect)
             } else {
                 drag = nil
             }
@@ -599,6 +621,12 @@ final class MarkupCanvasView: NSView, NSTextFieldDelegate, NSDraggingSource {
                 angle = (angle / increment).rounded() * increment
             }
             update(id) { $0.rotationRadians = MarkupGeometry.normalizedAngle(angle) }
+        case .creatingCrop(let start, _):
+            let end = MarkupGeometry.clamped(point, to: imageSize)
+            cropRect = AreaSelectionGeometry.clamped(
+                AreaSelectionGeometry.rect(from: start, to: end),
+                in: imageSize)
+            needsDisplay = true
         case .resizingCrop(let handle, let original):
             let clamped = MarkupGeometry.clamped(point, to: imageSize)
             cropRect = resizedCrop(original, handle: handle, to: clamped,
@@ -644,6 +672,20 @@ final class MarkupCanvasView: NSView, NSTextFieldDelegate, NSDraggingSource {
            let shape = shapes.first(where: { $0.id == id }),
            shape.fontSize != original.fontSize {
             MarkupPrefs.fontPoints = shape.fontSize / pixelScale
+        }
+        if case .creatingCrop(_, let previous) = drag,
+           let cropRect {
+            let minimum = max(Self.minimumCropSizePoints / fitScale, 1)
+            if cropRect.width < minimum || cropRect.height < minimum {
+                self.cropRect = previous
+                needsDisplay = true
+            }
+        }
+        switch drag {
+        case .creatingCrop, .resizingCrop, .movingCrop:
+            window?.invalidateCursorRects(for: self)
+        default:
+            break
         }
         drag = nil
     }

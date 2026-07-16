@@ -11,6 +11,10 @@ export default function FeatureDemo() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const trackedPlayRef = useRef(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const [hasFocus, setHasFocus] = useState(false);
+  const [controlsPinned, setControlsPinned] = useState(false);
+  const showControls = isHovered || hasFocus || controlsPinned;
 
   function playVideo() {
     void videoRef.current?.play();
@@ -41,11 +45,27 @@ export default function FeatureDemo() {
     >
       <div className="container">
         <Reveal>
-          <div className="feature-demo-frame">
+          <div
+            className="feature-demo-frame"
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+            onFocusCapture={() => setHasFocus(true)}
+            onBlurCapture={(event) => {
+              if (
+                !(event.relatedTarget instanceof Node) ||
+                !event.currentTarget.contains(event.relatedTarget)
+              ) {
+                setHasFocus(false);
+              }
+            }}
+            onPointerDown={(event) => {
+              if (event.pointerType !== "mouse") setControlsPinned(true);
+            }}
+          >
             <video
               ref={videoRef}
               className="feature-demo-video"
-              controls
+              controls={showControls}
               playsInline
               preload="metadata"
               width={1920}
@@ -64,6 +84,7 @@ export default function FeatureDemo() {
                 type="button"
                 aria-label="Play the Dropper feature demo"
                 onClick={playVideo}
+                onKeyDown={() => setControlsPinned(true)}
               />
             )}
           </div>
